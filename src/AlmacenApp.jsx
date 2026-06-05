@@ -288,11 +288,25 @@ const [modalMarca, setModalMarca] = useState(null);
   const [borrarMarca, setBorrarMarca] = useState(null);
   const [vista, setVista] = useState("stock");
 
-  const guardarMarca = (form) => {
-    const marcas = form.id ? producto.marcas.map(m => m.id === form.id ? form : m) : [...producto.marcas, { ...form, id: Date.now() }];
-    onActualizar({ ...producto, marcas });
-    setModalMarca(null);
-  };
+  const guardarMarca = async (form) => {
+  const marcas = form.id
+    ? producto.marcas.map(m => m.id === form.id ? form : m)
+    : [...producto.marcas, { ...form, id: Date.now() }];
+
+  const { error } = await supabase
+    .from("inventario")
+    .update({ marcas })
+    .eq("id", producto.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al guardar marca");
+    return;
+  }
+
+  onActualizar({ ...producto, marcas });
+  setModalMarca(null);
+};
 
 const totalVendidos = (producto.marcas || []).reduce(
   (a, m) => a + (m.vendidos || 0),
@@ -435,7 +449,37 @@ function Inventario({ data, setData, session }) {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevaCategoria, setNuevaCategoria] = useState("Alimentos");
 
-  const guardar = (form) => { setData(ps => form.id ? ps.map(p => p.id === form.id ? { ...p, ...form } : p) : [...ps, { ...form, id: Date.now(), marcas: [] }]); setModal(null); };
+const guardar = async (form) => {
+  if (form.id) {
+    setData(ps =>
+      ps.map(p => p.id === form.id ? { ...p, ...form } : p)
+    );
+    setModal(null);
+    return;
+  }
+
+  const nuevoProducto = {
+    user_id: session.user.id,
+    nombre: form.nombre,
+    categoria: form.categoria,
+    marcas: []
+  };
+
+  const { data: productoGuardado, error } = await supabase
+    .from("inventario")
+    .insert([nuevoProducto])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert("Error al guardar producto");
+    return;
+  }
+
+  setData(ps => [...ps, productoGuardado]);
+  setModal(null);
+};
   const actualizar = (prod) => { setData(ps => ps.map(p => p.id === prod.id ? prod : p)); setDetalle(prod); };
 
   if (detalle) {
@@ -843,7 +887,7 @@ function LineaER({ label, monto, color, bold, indent, separador }) {
     </div>
   );
 }
-function EstadoResultados({ pagos, ajustes, setAjustes }) {
+function EstadoResultados({ inventario,pagos, ajustes, setAjustes }) {
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
   const guardar = (form) => { setAjustes(as => form.id ? as.map(a => a.id === form.id ? form : a) : [...as, { ...form, id: Date.now() }]); setModal(null); };
@@ -853,8 +897,19 @@ function EstadoResultados({ pagos, ajustes, setAjustes }) {
   const gastosReg  = pagosMes.filter(p => p.tipo === "Gasto").reduce((a, p) => a + p.monto, 0);
   const ingresosAj = ajustes.filter(a => a.categoria === "ingreso").reduce((a, x) => a + x.monto, 0);
   const gastosAj   = ajustes.filter(a => a.categoria === "gasto").reduce((a, x) => a + x.monto, 0);
-  const totalIngresos = ventasReg + ingresosAj;
-  const utilidadBruta = totalIngresos - costosReg;
+  const ventasInventario = inventario.reduce((total, producto) => {
+  return total + (producto.marcas || []).reduce((suma, marca) => {
+    return suma + ((marca.precioVenta || 0) * (marca.vendidos || 0));
+  }, 0);
+}, 0);
+
+const costosInventario = inventario.reduce((total, producto) => {
+  return total + (producto.marcas || []).reduce((suma, marca) => {
+    return suma + ((marca.precioCompra || 0) * (marca.vendidos || 0));
+  }, 0);
+}, 0);
+  const totalIngresos = ventasReg + ventasInventario + ingresosAj;
+  const utilidadBruta = totalIngresos - costosReg - costosInventario;
   const totalGastos   = gastosReg + gastosAj;
   const utilidadNeta  = utilidadBruta - totalGastos;
   const margen = totalIngresos > 0 ? Math.round((utilidadNeta / totalIngresos) * 100) : 0;
@@ -975,7 +1030,14 @@ const cerrarSesion = async () => {
         {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos}      />}
         {tab === "pedidos"    && <Pedidos    data={pedidos}    setData={setPedidos}    />}
         {tab === "avisos"     && <Recordatorios data={recs}    setData={setRecs}       />}
-        {tab === "resultados" && <EstadoResultados pagos={pagos} ajustes={ajustes} setAjustes={setAjustes} />}
+{tab === "resultados" &&
+  <EstadoResultados
+    inventario={inventario}
+    pagos={pagos}
+    ajustes={ajustes}
+    setAjustes={setAjustes}
+  />
+}
       </div>
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 420, background: "var(--color-background-primary,#fff)", borderTop: "0.5px solid var(--color-border-tertiary,#ddd)", display: "flex", zIndex: 50 }}>
         {tabs.map(t => (
