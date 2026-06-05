@@ -426,7 +426,7 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
   );
 }
 
-function Inventario({ data, setData }) {
+function Inventario({ data, setData, session }) {
   const [busqueda, setBusqueda] = useState("");
   const [categoria, setCategoria] = useState("Todos");
   const [modal, setModal] = useState(null);
@@ -918,13 +918,29 @@ function EstadoResultados({ pagos, ajustes, setAjustes }) {
 }
 
 // ============ APP PRINCIPAL ============
-function AlmacenAppInner() {
-  const [tab, setTab] = useState("inventario");
+function AlmacenAppInner({ session }) {
+const [tab, setTab] = useState("inventario");
   const [inventario, setInventario] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [pedidos, setPedidos] = useState([]);
   const [recs, setRecs] = useState([]);
   const [ajustes, setAjustes] = useState([]);
+  const cargarInventario = async () => {
+  const { data, error } = await supabase
+    .from("inventario")
+    .select("*")
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("Error cargando inventario:", error);
+    return;
+  }
+
+  setInventario(data || []);
+};
+useEffect(() => {
+  cargarInventario();
+}, []);
   useEffect(() => { try { localStorage.setItem("inv_v4", JSON.stringify(inventario)); } catch {} }, [inventario]);
   useEffect(() => { try { localStorage.setItem("pag_v4", JSON.stringify(pagos)); } catch {} }, [pagos]);
   useEffect(() => { try { localStorage.setItem("ped_v4", JSON.stringify(pedidos)); } catch {} }, [pedidos]);
@@ -951,7 +967,11 @@ const cerrarSesion = async () => {
   Cerrar sesión
 </button>
       <div style={{ paddingBottom: 62 }}>
-        {tab === "inventario" && <Inventario data={inventario} setData={setInventario} />}
+<Inventario
+  data={inventario}
+  setData={setInventario}
+  session={session}
+/>
         {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos}      />}
         {tab === "pedidos"    && <Pedidos    data={pedidos}    setData={setPedidos}    />}
         {tab === "avisos"     && <Recordatorios data={recs}    setData={setRecs}       />}
