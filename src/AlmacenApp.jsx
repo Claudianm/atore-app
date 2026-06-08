@@ -606,33 +606,50 @@ function ModalPago({ pago, onGuardar, onCerrar }) {
     </ModalBase>
   );
 }
-function Pagos({ data, setData }) {
+function Pagos({ data, setData, session }) {
   const [filtro, setFiltro] = useState("Todos");
   const [tab, setTab] = useState("lista");
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
-  const guardar = (form) => {
-  setData(ps =>
-    form.id
-      ? ps.map(p => p.id === form.id ? form : p)
-      : [
-          {
-            ...form,
-            marcas: form.marcas || [],
-            id: Date.now()
-          },
-          ...ps
-        ]
-  );
+  const [busqueda, setBusqueda] = useState("");
+  const guardar = async (form) => {
+  if (form.id) {
+    setData(ps =>
+      ps.map(p => p.id === form.id ? form : p)
+    );
+    setModal(null);
+    return;
+  }
 
+  const nuevoPago = {
+  user_id: session.user.id,
+  tipo: form.tipo,
+  descripcion: form.descripcion,
+  monto: form.monto,
+  fecha: form.fecha,
+  pagado: form.pagado || false
+};
+  const { data: pagoGuardado, error } = await supabase
+    .from("pagos")
+    .insert([nuevoPago])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
+    return;
+  }
+
+  setData(ps => [pagoGuardado, ...ps]);
   setModal(null);
 };
   const filtrados = data.filter(p => {
-  const nombre = (p.marca || p.nombre || "").toLowerCase();
+  const nombre = (p.descripcion || "").toLowerCase();
   const texto = (busqueda || "").toLowerCase();
 
   return (
-    (categoria === "Todos" || p.tipo === categoria) &&
+    (filtro === "Todos" || p.tipo === filtro) &&
     nombre.includes(texto)
   );
 });
@@ -993,8 +1010,22 @@ const [tab, setTab] = useState("inventario");
 
   setInventario(data || []);
 };
+const cargarPagos = async () => {
+  const { data, error } = await supabase
+    .from("pagos")
+    .select("*")
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("Error cargando pagos:", error);
+    return;
+  }
+
+  setPagos(data || []);
+};
 useEffect(() => {
   cargarInventario();
+  cargarPagos();
 }, []);
   useEffect(() => { try { localStorage.setItem("inv_v4", JSON.stringify(inventario)); } catch {} }, [inventario]);
   useEffect(() => { try { localStorage.setItem("pag_v4", JSON.stringify(pagos)); } catch {} }, [pagos]);
@@ -1027,7 +1058,7 @@ const cerrarSesion = async () => {
   setData={setInventario}
   session={session}
 />
-        {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos}      />}
+{tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos} session={session} />}
         {tab === "pedidos"    && <Pedidos    data={pedidos}    setData={setPedidos}    />}
         {tab === "avisos"     && <Recordatorios data={recs}    setData={setRecs}       />}
 {tab === "resultados" &&
