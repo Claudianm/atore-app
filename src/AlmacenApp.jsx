@@ -738,12 +738,44 @@ function ModalPedido({ pedido, onGuardar, onCerrar }) {
     </ModalBase>
   );
 }
-function Pedidos({ data, setData }) {
+function Pedidos({ data, setData, session }) {
   const [filtro, setFiltro] = useState("Todos");
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
   const [expandido, setExpandido] = useState(null);
-  const guardar = (form) => { setData(ps => form.id ? ps.map(p => p.id === form.id ? form : p) : [{ ...form, id: Date.now() }, ...ps]); setModal(null); };
+const guardar = async (form) => {
+  if (form.id) {
+    setData(ps =>
+      ps.map(p => p.id === form.id ? form : p)
+    );
+    setModal(null);
+    return;
+  }
+
+  const nuevoPedido = {
+    user_id: session.user.id,
+    proveedor: form.proveedor,
+    fecha: form.fecha,
+    estado: form.estado,
+    productos: form.productos || [],
+    monto: form.monto
+  };
+
+  const { data: pedidoGuardado, error } = await supabase
+    .from("pedidos")
+    .insert([nuevoPedido])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert("Error al guardar pedido");
+    return;
+  }
+
+  setData(ps => [pedidoGuardado, ...ps]);
+  setModal(null);
+};
   const filtrados = data.filter(p => filtro === "Todos" || p.estado === filtro);
   const enCamino = data.filter(p => p.estado === "En camino").length;
   const pendientes = data.filter(p => p.estado === "Pendiente").length;
@@ -1023,9 +1055,23 @@ const cargarPagos = async () => {
 
   setPagos(data || []);
 };
+const cargarPedidos = async () => {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("*")
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("Error cargando pedidos:", error);
+    return;
+  }
+
+  setPedidos(data || []);
+};
 useEffect(() => {
   cargarInventario();
   cargarPagos();
+  cargarPedidos();
 }, []);
   useEffect(() => { try { localStorage.setItem("inv_v4", JSON.stringify(inventario)); } catch {} }, [inventario]);
   useEffect(() => { try { localStorage.setItem("pag_v4", JSON.stringify(pagos)); } catch {} }, [pagos]);
@@ -1059,7 +1105,13 @@ const cerrarSesion = async () => {
   session={session}
 />
 {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos} session={session} />}
-        {tab === "pedidos"    && <Pedidos    data={pedidos}    setData={setPedidos}    />}
+{tab === "pedidos" && (
+  <Pedidos
+    data={pedidos}
+    setData={setPedidos}
+    session={session}
+  />
+)}
         {tab === "avisos"     && <Recordatorios data={recs}    setData={setRecs}       />}
 {tab === "resultados" &&
   <EstadoResultados
