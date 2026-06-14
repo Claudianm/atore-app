@@ -844,12 +844,45 @@ function ModalRecordatorio({ rec, onGuardar, onCerrar }) {
     </ModalBase>
   );
 }
-function Recordatorios({ data, setData }) {
+function Recordatorios({ data, setData, session }) {
   const [filtro, setFiltro] = useState("Todos");
   const [verCompletados, setVerCompletados] = useState(false);
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
-  const guardar = (form) => { setData(rs => form.id ? rs.map(r => r.id === form.id ? form : r) : [{ ...form, id: Date.now() }, ...rs]); setModal(null); };
+const guardar = async (form) => {
+  if (form.id) {
+    setData(rs =>
+      rs.map(r => r.id === form.id ? form : r)
+    );
+    setModal(null);
+    return;
+  }
+
+  const nuevoRecordatorio = {
+    user_id: session.user.id,
+    tipo: form.tipo,
+    titulo: form.titulo,
+    descripcion: form.descripcion,
+    fecha: form.fecha,
+    prioridad: form.prioridad,
+    completado: form.completado
+  };
+
+  const { data: recordatorioGuardado, error } = await supabase
+    .from("recordatorios")
+    .insert([nuevoRecordatorio])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert("Error al guardar recordatorio");
+    return;
+  }
+
+  setData(rs => [recordatorioGuardado, ...rs]);
+  setModal(null);
+};
   const pendientes = data.filter(r => !r.completado).filter(r => filtro === "Todos" || r.tipo === filtro).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
   const completados = data.filter(r => r.completado);
   const urgentes = data.filter(r => !r.completado && diasRestantes(r.fecha) <= 2).length;
@@ -1068,10 +1101,24 @@ const cargarPedidos = async () => {
 
   setPedidos(data || []);
 };
+const cargarRecordatorios = async () => {
+  const { data, error } = await supabase
+    .from("recordatorios")
+    .select("*")
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("Error cargando recordatorios:", error);
+    return;
+  }
+
+  setRecs(data || []);
+};
 useEffect(() => {
   cargarInventario();
   cargarPagos();
   cargarPedidos();
+  cargarRecordatorios();
 }, []);
   useEffect(() => { try { localStorage.setItem("inv_v4", JSON.stringify(inventario)); } catch {} }, [inventario]);
   useEffect(() => { try { localStorage.setItem("pag_v4", JSON.stringify(pagos)); } catch {} }, [pagos]);
@@ -1112,7 +1159,13 @@ const cerrarSesion = async () => {
     session={session}
   />
 )}
-        {tab === "avisos"     && <Recordatorios data={recs}    setData={setRecs}       />}
+{tab === "avisos" && (
+  <Recordatorios
+    data={recs}
+    setData={setRecs}
+    session={session}
+  />
+)}
 {tab === "resultados" &&
   <EstadoResultados
     inventario={inventario}
