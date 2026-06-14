@@ -969,10 +969,40 @@ function LineaER({ label, monto, color, bold, indent, separador }) {
     </div>
   );
 }
-function EstadoResultados({ inventario,pagos, ajustes, setAjustes }) {
+function EstadoResultados({ inventario, pagos, ajustes, setAjustes, session }) {
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
-  const guardar = (form) => { setAjustes(as => form.id ? as.map(a => a.id === form.id ? form : a) : [...as, { ...form, id: Date.now() }]); setModal(null); };
+const guardar = async (form) => {
+  if (form.id) {
+    setAjustes(as =>
+      as.map(a => a.id === form.id ? form : a)
+    );
+    setModal(null);
+    return;
+  }
+
+  const nuevoAjuste = {
+    user_id: session.user.id,
+    categoria: form.categoria,
+    descripcion: form.descripcion,
+    monto: form.monto
+  };
+
+  const { data: ajusteGuardado, error } = await supabase
+    .from("ajustes_er")
+    .insert([nuevoAjuste])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert("Error al guardar ajuste");
+    return;
+  }
+
+  setAjustes(as => [...as, ajusteGuardado]);
+  setModal(null);
+};
   const pagosMes = pagos.filter(p => p.fecha?.startsWith(mesActual));
   const ventasReg  = pagosMes.filter(p => p.tipo === "Venta").reduce((a, p) => a + p.monto, 0);
   const costosReg  = pagosMes.filter(p => p.tipo === "Proveedor").reduce((a, p) => a + p.monto, 0);
@@ -1114,11 +1144,25 @@ const cargarRecordatorios = async () => {
 
   setRecs(data || []);
 };
+const cargarAjustes = async () => {
+  const { data, error } = await supabase
+    .from("ajustes_er")
+    .select("*")
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("Error cargando ajustes:", error);
+    return;
+  }
+
+  setAjustes(data || []);
+};
 useEffect(() => {
   cargarInventario();
   cargarPagos();
   cargarPedidos();
   cargarRecordatorios();
+  cargarAjustes();
 }, []);
   useEffect(() => { try { localStorage.setItem("inv_v4", JSON.stringify(inventario)); } catch {} }, [inventario]);
   useEffect(() => { try { localStorage.setItem("pag_v4", JSON.stringify(pagos)); } catch {} }, [pagos]);
@@ -1168,11 +1212,12 @@ const cerrarSesion = async () => {
 )}
 {tab === "resultados" &&
   <EstadoResultados
-    inventario={inventario}
-    pagos={pagos}
-    ajustes={ajustes}
-    setAjustes={setAjustes}
-  />
+  inventario={inventario}
+  pagos={pagos}
+  ajustes={ajustes}
+  setAjustes={setAjustes}
+  session={session}
+/>
 }
       </div>
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 420, background: "var(--color-background-primary,#fff)", borderTop: "0.5px solid var(--color-border-tertiary,#ddd)", display: "flex", zIndex: 50 }}>
