@@ -54,7 +54,8 @@ function AuthScreen() {
         {mensaje ? (
           <div style={{ background: "#eaf3de", border: "0.5px solid #b8dda0", borderRadius: 10, padding: 16, textAlign: "center", color: "#3b6d11", fontSize: 14 }}>
             ✅ {mensaje}<br /><br />
-            <button onClick={() => { setModo("login"); setMensaje(""); }} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}>Ir a Ingresar</button>
+            <button on
+            Click={() => { setModo("login"); setMensaje(""); }} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}>Ir a Ingresar</button>
           </div>
         ) : (
           <>
@@ -263,7 +264,6 @@ const [form, setForm] = useState(
           { label: "Precio de venta ($)",    key: "precioVenta",  type: "number", placeholder: "0" },
           { label: "Stock actual",           key: "stock",        type: "number", placeholder: "0" },
           { label: "Stock mínimo",           key: "minimo",       type: "number", placeholder: "5" },
-          { label: "Unidades vendidas",      key: "vendidos",     type: "number", placeholder: "0" },
         ].map(({ label, key, type, placeholder }) => (
           <div key={key} style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", display: "block", marginBottom: 4 }}>{label}</label>
@@ -828,6 +828,189 @@ const guardar = async (form) => {
     </>
   );
 }
+// ============ VENTAS DIARIAS ============
+function VentasDiarias({session, inventario}) {
+  const [ventas, setVentas] = useState([]);
+const [producto, setProducto] = useState("");
+const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+const [cantidad, setCantidad] = useState(1);
+const cargarVentas = async () => {
+  const { data, error } = await supabase
+    .from("ventas_diarias")
+    .select("*")
+    .eq("user_id", session.user.id)
+    .order("created_at", { ascending: false });
+
+  if (!error) {
+    setVentas(data || []);
+  }
+};
+useEffect(() => {
+  if (session) {
+    cargarVentas();
+  }
+}, [session]);
+const actualizarInventario = async (producto, cantidadVendida) => {
+  const productoInv = inventario.find(
+    p => p.nombre === producto
+  );
+
+  if (!productoInv) return;
+
+  const marcas = [...productoInv.marcas];
+
+  marcas[0] = {
+    ...marcas[0],
+    stock: marcas[0].stock - cantidadVendida,
+    vendidos: (marcas[0].vendidos || 0) + cantidadVendida
+  };
+  const { error } = await supabase
+  .from("inventario")
+  .update({ marcas })
+  .eq("id", productoInv.id);
+
+if (error) {
+  console.error(error);
+  return;
+}
+};
+const gananciaDelDia = ventas.reduce(
+  (sum, v) =>
+    sum +
+    ((v.precio_unitario || 0) - (v.costo_unitario || 0)) *
+      (v.cantidad || 0),
+  0
+);
+  return (
+    <div style={{ padding: 16 }}>
+      <div
+        style={{
+          background: "#1a3a2a",
+          color: "white",
+          padding: 16,
+          borderRadius: 12,
+          marginBottom: 16
+        }}
+      >
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          Ventas del día
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 600 }}>
+  {formatPesos(
+    ventas.reduce((sum, v) => sum + (v.total || 0), 0)
+  )}
+</div>
+<div
+  style={{
+    fontSize: 14,
+    marginTop: 8,
+    opacity: 0.9
+  }}
+>
+  Ganancia del día: {formatPesos(gananciaDelDia)}
+</div>
+      </div>
+<select
+  style={inputStyle}
+  value={productoSeleccionado?.id || ""}
+  onChange={(e) => {
+    const prod = inventario.find(
+      p => p.id === Number(e.target.value)
+    );
+
+    setProductoSeleccionado(prod);
+    setProducto(prod?.nombre || "");
+  }}
+>
+  <option value="">Seleccione un producto</option>
+
+  {inventario.map((p) => (
+    <option key={p.id} value={p.id}>
+      {p.nombre}
+    </option>
+  ))}
+</select>
+
+<input
+  style={{ ...inputStyle, marginTop: 8 }}
+  type="number"
+  min="1"
+  value={cantidad}
+  onChange={e => setCantidad(Number(e.target.value))}
+/>
+      <button
+onClick={async () => {
+if (!producto.trim()) return;
+const productoInv = inventario.find(
+  p => p.nombre === producto
+);
+
+if (!productoInv || !productoInv.marcas.length) {
+  alert("El producto no tiene precio configurado.");
+  return;
+}
+
+const marca = productoInv.marcas[0];
+
+const costoUnitario = marca.precioCompra;
+const precioUnitario = marca.precioVenta;
+const total = precioUnitario * cantidad;
+const { data, error } = await supabase
+  .from("ventas_diarias")
+  .insert([
+    {
+      user_id: session.user.id,
+      fecha: hoy,
+      producto,
+      cantidad,
+      costo_unitario: costoUnitario,
+      precio_unitario: precioUnitario,
+      total: total
+    }
+  ])
+  .select()
+  .single();
+
+if (error) {
+  console.error(error);
+  alert(error.message);
+  return;
+}
+    setVentas(v => [...v, data]);
+await actualizarInventario(producto, cantidad);
+    setProducto("");
+    setCantidad(1);
+  }}
+  style={{
+    width: "100%",
+    padding: 12,
+    borderRadius: 10,
+    border: "none",
+    background: "#1a3a2a",
+    color: "white",
+    cursor: "pointer"
+  }}
+>
+  + Agregar venta
+  
+</button>
+{ventas.map((v, i) => (
+  <div
+    key={i}
+    style={{
+      background: "#fff",
+      border: "1px solid #ddd",
+      borderRadius: 8,
+      padding: 10,
+      marginTop: 8
+    }}
+  >
+    {v.cantidad} × {v.producto}
+  </div>
+))}
+    </div>
+  );
+}
 
 // ============ RECORDATORIOS ============
 function ModalRecordatorio({ rec, onGuardar, onCerrar }) {
@@ -1174,6 +1357,7 @@ useEffect(() => {
 
   const tabs = [
     { key: "inventario", label: "Stock",   icon: "📦" },
+    { key: "ventas", label: "Ventas", icon: "🧾" },
     { key: "pagos",      label: "Pagos",   icon: "💰" },
     { key: "pedidos",    label: "Pedidos", icon: "🚚" },
     { key: "avisos",     label: "Avisos",  icon: "🔔", badge: alertas > 0 ? alertas : null },
@@ -1195,6 +1379,9 @@ const cerrarSesion = async () => {
   setData={setInventario}
   session={session}
 />
+{tab === "ventas" && (
+  <VentasDiarias session={session} inventario={inventario} />
+)}
 {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos} session={session} />}
 {tab === "pedidos" && (
   <Pedidos
