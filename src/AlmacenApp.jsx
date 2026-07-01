@@ -829,10 +829,11 @@ const guardar = async (form) => {
   );
 }
 // ============ VENTAS DIARIAS ============
-function VentasDiarias({session, inventario}) {
+function VentasDiarias({session, inventario, setInventario}) {
   const [ventas, setVentas] = useState([]);
 const [producto, setProducto] = useState("");
 const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+const [marcaSeleccionada, setMarcaSeleccionada] = useState("");
 const [cantidad, setCantidad] = useState(1);
 const cargarVentas = async () => {
   const { data, error } = await supabase
@@ -850,7 +851,7 @@ useEffect(() => {
     cargarVentas();
   }
 }, [session]);
-const actualizarInventario = async (producto, cantidadVendida) => {
+const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
   const productoInv = inventario.find(
     p => p.nombre === producto
   );
@@ -859,20 +860,27 @@ const actualizarInventario = async (producto, cantidadVendida) => {
 
   const marcas = [...productoInv.marcas];
 
-  marcas[0] = {
-    ...marcas[0],
-    stock: marcas[0].stock - cantidadVendida,
-    vendidos: (marcas[0].vendidos || 0) + cantidadVendida
-  };
-  const { error } = await supabase
-  .from("inventario")
-  .update({ marcas })
-  .eq("id", productoInv.id);
+  const indice = marcas.findIndex(
+    m => m.marca === marcaNombre
+  );
 
-if (error) {
-  console.error(error);
-  return;
-}
+  if (indice === -1) return;
+
+  marcas[indice] = {
+    ...marcas[indice],
+    stock: marcas[indice].stock - cantidadVendida,
+    vendidos: (marcas[indice].vendidos || 0) + cantidadVendida
+  };
+
+  const { error } = await supabase
+    .from("inventario")
+    .update({ marcas })
+    .eq("id", productoInv.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
 };
 const gananciaDelDia = ventas.reduce(
   (sum, v) =>
@@ -919,7 +927,13 @@ const gananciaDelDia = ventas.reduce(
     );
 
     setProductoSeleccionado(prod);
-    setProducto(prod?.nombre || "");
+setProducto(prod?.nombre || "");
+
+if (prod?.marcas.length === 1) {
+  setMarcaSeleccionada(prod.marcas[0].marca);
+} else {
+  setMarcaSeleccionada("");
+}
   }}
 >
   <option value="">Seleccione un producto</option>
@@ -930,7 +944,22 @@ const gananciaDelDia = ventas.reduce(
     </option>
   ))}
 </select>
+{productoSeleccionado &&
+  productoSeleccionado.marcas.length > 1 && (
+    <select
+      style={{ ...inputStyle, marginTop: 8 }}
+      value={marcaSeleccionada}
+      onChange={(e) => setMarcaSeleccionada(e.target.value)}
+    >
+      <option value="">Seleccione una marca</option>
 
+      {productoSeleccionado.marcas.map((m, i) => (
+        <option key={i} value={m.marca}>
+          {m.marca}
+        </option>
+      ))}
+    </select>
+)}
 <input
   style={{ ...inputStyle, marginTop: 8 }}
   type="number"
@@ -950,8 +979,20 @@ if (!productoInv || !productoInv.marcas.length) {
   return;
 }
 
-const marca = productoInv.marcas[0];
+let marca;
 
+if (productoInv.marcas.length === 1) {
+  marca = productoInv.marcas[0];
+} else {
+  marca = productoInv.marcas.find(
+    m => m.marca === marcaSeleccionada
+  );
+
+  if (!marca) {
+    alert("Seleccione una marca.");
+    return;
+  }
+}
 const costoUnitario = marca.precioCompra;
 const precioUnitario = marca.precioVenta;
 const total = precioUnitario * cantidad;
@@ -977,7 +1018,25 @@ if (error) {
   return;
 }
     setVentas(v => [...v, data]);
-await actualizarInventario(producto, cantidad);
+await actualizarInventario(producto, marca.marca, cantidad);
+const nuevoInventario = inventario.map(p => {
+  if (p.nombre !== producto) return p;
+
+  return {
+    ...p,
+    marcas: p.marcas.map(m =>
+      m.marca === marca.marca
+        ? {
+            ...m,
+            stock: m.stock - cantidad,
+            vendidos: (m.vendidos || 0) + cantidad
+          }
+        : m
+    )
+  };
+});
+
+setInventario(nuevoInventario);
     setProducto("");
     setCantidad(1);
   }}
@@ -1380,7 +1439,11 @@ const cerrarSesion = async () => {
   session={session}
 />
 {tab === "ventas" && (
-  <VentasDiarias session={session} inventario={inventario} />
+<VentasDiarias
+  session={session}
+  inventario={inventario}
+  setInventario={setInventario}
+/>
 )}
 {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos} session={session} />}
 {tab === "pedidos" && (
