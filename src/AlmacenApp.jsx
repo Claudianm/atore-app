@@ -835,6 +835,7 @@ const [producto, setProducto] = useState("");
 const [productoSeleccionado, setProductoSeleccionado] = useState(null);
 const [marcaSeleccionada, setMarcaSeleccionada] = useState("");
 const [cantidad, setCantidad] = useState(1);
+const [ventaEditando, setVentaEditando] = useState(null);
 const cargarVentas = async () => {
   const { data, error } = await supabase
     .from("ventas_diarias")
@@ -1003,6 +1004,7 @@ const { data, error } = await supabase
       user_id: session.user.id,
       fecha: hoy,
       producto,
+      marca: marca.marca,
       cantidad,
       costo_unitario: costoUnitario,
       precio_unitario: precioUnitario,
@@ -1058,19 +1060,215 @@ setInventario(nuevoInventario);
     key={i}
     style={{
       background: "#fff",
-      border: "1px solid #ddd",
-      borderRadius: 8,
-      padding: 10,
-      marginTop: 8
+      borderRadius: 16,
+      padding: 16,
+      marginTop: 12,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+      border: "1px solid #e8e8e8"
     }}
   >
-    {v.cantidad} × {v.producto}
+    <div style={{ fontSize: 12, color: "#777" }}>
+      🕒 {new Date(v.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })}
+    </div>
+
+    <div
+      style={{
+        fontSize: 20,
+        fontWeight: 600,
+        marginTop: 6
+      }}
+    >
+      🛒 {v.producto}
+    </div>
+
+    <div
+      style={{
+        color: "#666",
+        marginTop: 4
+      }}
+    >
+      🏷️ {v.marca || "Sin marca"}
+    </div>
+
+    <div
+      style={{
+        marginTop: 10,
+        color: "#444"
+      }}
+    >
+      📦 {v.cantidad} × {formatPesos(v.precio_unitario)}
+    </div>
+
+    <div
+      style={{
+        marginTop: 12,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: "#1a3a2a"
+          }}
+        >
+          {formatPesos(v.total)}
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+            color: "#888"
+          }}
+        >
+          Ganancia: {formatPesos(v.ganancia || 0)}
+        </div>
+      </div>
+<button
+onClick={() => {
+  console.log(v);
+  alert("Editar");
+  setVentaEditando(v);
+}}
+style={{
+    border: "none",
+    background: "#f5f5f5",
+    borderRadius: 10,
+    padding: "8px 10px",
+    cursor: "pointer",
+    marginRight: 8
+  }}
+>
+  ✏️
+</button>
+      <button
+  onClick={async () => {
+
+    if (!window.confirm("¿Eliminar esta venta?")) return;
+
+    const { error } = await supabase
+      .from("ventas_diarias")
+      .delete()
+      .eq("id", v.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setVentas(ventas =>
+      ventas.filter(x => x.id !== v.id)
+    );
+
+  }}
+  style={{
+    border: "none",
+    background: "#f5f5f5",
+    borderRadius: 10,
+    padding: "8px 10px",
+    cursor: "pointer"
+  }}
+>
+  🗑️
+</button>
+    </div>
   </div>
 ))}
-    </div>
+{ventaEditando && (
+  <ModalEditarVenta
+    venta={ventaEditando}
+    inventario={inventario}
+    onCerrar={() => setVentaEditando(null)}
+    onGuardar={async (ventaActualizada) => {
+
+      const { error } = await supabase
+        .from("ventas_diarias")
+        .update({
+          cantidad: ventaActualizada.cantidad,
+          total:
+            ventaActualizada.cantidad *
+            ventaActualizada.precio_unitario
+        })
+        .eq("id", ventaActualizada.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      setVentas(ventas =>
+        ventas.map(v =>
+          v.id === ventaActualizada.id
+            ? {
+                ...v,
+                cantidad: ventaActualizada.cantidad,
+                total:
+                  ventaActualizada.cantidad *
+                  ventaActualizada.precio_unitario
+              }
+            : v
+        )
+      );
+
+      setVentaEditando(null);
+
+    }}
+  />
+)}
+</div>
   );
 }
+function ModalEditarVenta({
+  venta,
+  inventario,
+  onGuardar,
+  onCerrar
+}) {
+  const [cantidad, setCantidad] = useState(venta.cantidad);
 
+  return (
+    <ModalBase
+      titulo="Editar venta"
+      onCerrar={onCerrar}
+      onGuardar={() =>
+        onGuardar({
+          ...venta,
+          cantidad
+        })
+      }
+      valido={cantidad > 0}
+      labelGuardar="Guardar cambios"
+    >
+
+      <Campo label="Producto">
+        <input
+          style={inputStyle}
+          value={venta.producto}
+          disabled
+        />
+      </Campo>
+
+      <Campo label="Cantidad">
+        <input
+          style={inputStyle}
+          type="number"
+          min="1"
+          value={cantidad}
+          onChange={(e)=>
+            setCantidad(Number(e.target.value))
+          }
+        />
+      </Campo>
+
+    </ModalBase>
+  );
+}
 // ============ RECORDATORIOS ============
 function ModalRecordatorio({ rec, onGuardar, onCerrar }) {
   const [form, setForm] = useState(rec || { tipo: "Fiado", titulo: "", descripcion: "", fecha: hoy, prioridad: "Media", completado: false });
@@ -1433,11 +1631,13 @@ const cerrarSesion = async () => {
   Cerrar sesión
 </button>
       <div style={{ paddingBottom: 62 }}>
+{tab === "inventario" && (
 <Inventario
   data={inventario}
   setData={setInventario}
   session={session}
 />
+)}
 {tab === "ventas" && (
 <VentasDiarias
   session={session}
