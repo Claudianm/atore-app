@@ -1151,6 +1151,45 @@ style={{
   onClick={async () => {
 
     if (!window.confirm("¿Eliminar esta venta?")) return;
+    const productoInv = inventario.find(
+  p => p.nombre === v.producto
+);
+
+if (productoInv) {
+
+  const marcas = [...productoInv.marcas];
+
+  const indice = marcas.findIndex(
+    m => m.marca === v.marca
+  );
+
+  if (indice !== -1) {
+
+    marcas[indice] = {
+      ...marcas[indice],
+      stock: marcas[indice].stock + v.cantidad,
+      vendidos: Math.max(
+        0,
+        (marcas[indice].vendidos || 0) - v.cantidad
+      )
+    };
+
+    await supabase
+      .from("inventario")
+      .update({ marcas })
+      .eq("id", productoInv.id);
+
+    setInventario(inv =>
+      inv.map(p =>
+        p.id === productoInv.id
+          ? { ...p, marcas }
+          : p
+      )
+    );
+
+  }
+
+}
 
     const { error } = await supabase
       .from("ventas_diarias")
