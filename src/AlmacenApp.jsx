@@ -230,6 +230,7 @@ function ModalMarca({ marca, onGuardar, onCerrar, theme }) {
 const [form, setForm] = useState(
   marca ?? {
     marca: "",
+    caracteristicas: "",
     precioCompra: 0,
     precioVenta: 0,
     stock: 0,
@@ -239,7 +240,7 @@ const [form, setForm] = useState(
 );
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const valido =
-  (form.marca || "").trim() && form.precioCompra !== "" && form.precioVenta !== "" && form.stock !== "" && form.minimo !== "";
+  (form.marca || "").trim() && (form.caracteristicas || "").trim() && form.precioCompra !== "" && form.precioVenta !== "" && form.stock !== "" && form.minimo !== "";
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200 }}>
       <div
@@ -259,11 +260,11 @@ const [form, setForm] = useState(
           <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
         {[
-          { label: "Nombre", key: "marca", type: "text", placeholder: "Ej: Carozzi 500g" },
-          { label: "Precio de compra ($)",   key: "precioCompra", type: "number", placeholder: "0" },
-          { label: "Precio de venta ($)",    key: "precioVenta",  type: "number", placeholder: "0" },
-          { label: "Stock actual",           key: "stock",        type: "number", placeholder: "0" },
-          { label: "Stock mínimo",           key: "minimo",       type: "number", placeholder: "5" },
+        { label: "Marca", key: "marca", type: "text", placeholder: "Ej: Carozzi" },
+        { label: "Características", key: "caracteristicas", type: "text", placeholder: "Ej: 500 g, Zero 1 L, Entera 1 L" },
+        { label: "Precio de compra ($)", key: "precioCompra", type: "number", placeholder: "0" },
+        { label: "Precio de venta ($)", key: "precioVenta", type: "number", placeholder: "0" },
+        { label: "Stock actual", key: "stock", type: "number", placeholder: "0" },  
         ].map(({ label, key, type, placeholder }) => (
           <div key={key} style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", display: "block", marginBottom: 4 }}>{label}</label>
@@ -354,7 +355,23 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
               return (
                 <div key={m.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: 500, fontSize: 14 }}>{m.marca}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Compra: {formatPesos(m.precioCompra)} · Venta: {formatPesos(m.precioVenta)}</div></div>
+                    <div style={{ flex: 1 }}><div>
+  <div style={{ fontWeight: 500, fontSize: 14 }}>
+    {m.marca}
+  </div>
+
+  {m.caracteristicas && (
+    <div
+      style={{
+        fontSize: 12,
+        color: "#666",
+        marginTop: 2
+      }}
+    >
+      {m.caracteristicas}
+    </div>
+  )}
+</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Compra: {formatPesos(m.precioCompra)} · Venta: {formatPesos(m.precioVenta)}</div></div>
                     <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, fontWeight: 500, background: b.bg, color: b.color }}>{b.label}</span>
                   </div>
                   <div style={{ height: 4, background: "var(--color-background-secondary,#f1f0ea)", borderRadius: 10, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 10 }} /></div>
@@ -448,6 +465,7 @@ function Inventario({ data, setData, session }) {
   const [detalle, setDetalle] = useState(null);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevaCategoria, setNuevaCategoria] = useState("Alimentos");
+  const [tieneMarcas, setTieneMarcas] = useState(true);
 
 const guardar = async (form) => {
   if (form.id) {
@@ -461,7 +479,8 @@ const guardar = async (form) => {
   const nuevoProducto = {
     user_id: session.user.id,
     nombre: form.nombre,
-    categoria: form.categoria,
+    categoria: form.categoria, 
+    tieneMarcas: form.tieneMarcas,
     marcas: []
   };
 
@@ -564,7 +583,7 @@ const marcas = p.marcas || [];
       </div>
       <FAB label="+ Nuevo producto" onClick={() => setModal("nuevo")} />
       {modal && (
-        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() => guardar(modal === "nuevo" ? { nombre: nuevoNombre, categoria: nuevaCategoria } : modal)} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
+        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() => guardar(modal === "nuevo" ? { nombre: nuevoNombre, categoria: nuevaCategoria, tieneMarcas } : modal)} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
           {(() => {
             
             return (
@@ -579,14 +598,54 @@ const marcas = p.marcas || [];
   />
 </Campo>
                 <Campo label="Categoría"><select style={inputStyle} value={nuevaCategoria} onChange={e => setNuevaCategoria(e.target.value)}>{CATEGORIAS.filter(x => x !== "Todos").map(x => <option key={x}>{x}</option>)}</select></Campo>
-                <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginBottom: 4 }}>Las marcas se agregan desde el detalle del producto.</div>
+                <Campo label="¿Tiene marcas o variedades?">
+  <select
+    style={inputStyle}
+    value={tieneMarcas ? "si" : "no"}
+    onChange={(e) => setTieneMarcas(e.target.value === "si")}
+  >
+    <option value="si">Sí</option>
+    <option value="no">No</option>
+  </select>
+</Campo>
+
+<div
+  style={{
+    fontSize: 12,
+    color: "#888",
+    marginBottom: 4
+  }}
+>
+  {tieneMarcas
+    ? "Las marcas se agregan desde el detalle del producto."
+    : "Este producto no utilizará marcas ni variedades."}
+</div>
                 <button onClick={() => { guardar(modal === "nuevo" ? { nombre: n, categoria: c } : { ...modal, nombre: n, categoria: c }); }} style={{ display: "none" }} />
               </>
             );
           })()}
         </ModalBase>
       )}
-      {borrar && <ConfirmarBorrar titulo="producto" onConfirmar={() => { setData(ps => ps.filter(p => p.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+{borrar && (
+  <ConfirmarBorrar
+    titulo="producto"
+    onConfirmar={async () => {
+      const { error } = await supabase
+        .from("inventario")
+        .delete()
+        .eq("id", borrar.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      setData(ps => ps.filter(p => p.id !== borrar.id));
+      setBorrar(null);
+    }}
+    onCancelar={() => setBorrar(null)}
+  />
+)}
     </>
   );
 }
@@ -836,6 +895,8 @@ const [productoSeleccionado, setProductoSeleccionado] = useState(null);
 const [marcaSeleccionada, setMarcaSeleccionada] = useState("");
 const [cantidad, setCantidad] = useState(1);
 const [ventaEditando, setVentaEditando] = useState(null);
+const [vista, setVista] = useState("hoy");
+const [fechaHistorial, setFechaHistorial] = useState(hoy);
 const cargarVentas = async () => {
   const { data, error } = await supabase
     .from("ventas_diarias")
@@ -847,11 +908,27 @@ const cargarVentas = async () => {
     setVentas(data || []);
   }
 };
+const cargarVentasPorFecha = async (fecha) => {
+  const { data, error } = await supabase
+    .from("ventas_diarias")
+    .select("*")
+    .eq("user_id", session.user.id)
+    .eq("fecha", fecha)
+    .order("created_at", { ascending: false });
+
+  if (!error) {
+    setVentas(data || []);
+  }
+};
 useEffect(() => {
   if (session) {
-    cargarVentas();
+    if (vista === "hoy") {
+      cargarVentasPorFecha(hoy);
+    } else {
+      cargarVentasPorFecha(fechaHistorial);
+    }
   }
-}, [session]);
+}, [session, vista, fechaHistorial]);
 const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
   const productoInv = inventario.find(
     p => p.nombre === producto
@@ -892,6 +969,63 @@ const gananciaDelDia = ventas.reduce(
 );
   return (
     <div style={{ padding: 16 }}>
+      <div
+  style={{
+    display: "flex",
+    gap: 8,
+    marginBottom: 12
+  }}
+>
+  <button
+  onClick={() => {
+  setVista("hoy");
+  cargarVentasPorFecha(hoy);
+}}
+    style={{
+    flex: 1,
+    padding: 10,
+    border: "none",
+    borderRadius: 10,
+    background: vista === "hoy" ? "#1a3a2a" : "white",
+    color: vista === "hoy" ? "white" : "#1a3a2a",
+    border: "1px solid #1a3a2a",
+    cursor: "pointer"
+  }}
+>
+  🟢 Hoy
+</button>
+
+  <button
+onClick={() => {
+  setVista("historial");
+  cargarVentasPorFecha(fechaHistorial);
+}}
+style={{
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #1a3a2a",
+    background: vista === "historial" ? "#1a3a2a" : "white",
+    color: vista === "historial" ? "white" : "#1a3a2a",
+    cursor: "pointer"
+  }}
+>
+  📅 Historial
+</button>
+</div>
+{vista === "historial" && (
+  <div style={{ marginBottom: 16 }}>
+    <input
+      type="date"
+      style={inputStyle}
+      value={fechaHistorial}
+onChange={async (e) => {
+  setFechaHistorial(e.target.value);
+  await cargarVentasPorFecha(e.target.value);
+}}
+/>
+  </div>
+)}
       <div
         style={{
           background: "#1a3a2a",
