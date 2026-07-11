@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import DetalleProductoSimple from "./DetalleProductoSimple";
 
 const supabase = createClient(
   "https://rstkjtuwvpdaowbqtspc.supabase.co",
@@ -341,14 +342,15 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
           <button key={t.k} onClick={() => setVista(t.k)} style={{ flex: 1, padding: "10px", fontSize: 13, background: "none", border: "none", cursor: "pointer", color: vista === t.k ? "#1a3a2a" : "var(--color-text-secondary,#888)", borderBottom: vista === t.k ? "2px solid #1a3a2a" : "2px solid transparent", fontWeight: vista === t.k ? 500 : 400 }}>{t.l}</button>
         ))}
       </div>
-
+        
       <div style={{ padding: "14px", paddingBottom: 80 }}>
         {vista === "stock" && (
-          <>
-            {producto.marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas. Agrega la primera.</div>}
-            {producto.marcas.map(m => {
-              const est = estadoStock(m.stock, m.minimo);
-              const b = badgeStock[est];
+          producto.tieneMarcas ? (
+            <>
+              {producto.marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas. Agrega la primera.</div>}
+              {producto.marcas.map(m => {
+                const est = estadoStock(m.stock, m.minimo);
+                const b = badgeStock[est];
               const mg = margenPct(m);
               const pct = m.minimo > 0 ? Math.min(100, Math.round((m.stock / (m.minimo * 4)) * 100)) : 0;
               const barColor = est === "sin" ? "#e24b4a" : est === "poco" ? "#ef9f27" : "#1d9e75";
@@ -385,9 +387,16 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
                   </div>
                 </div>
               );
-            })}
+          })}
           </>
-        )}
+        ) : (
+          <DetalleProductoSimple
+            producto={producto}
+            onVolver={onVolver}
+            onActualizar={onActualizar}
+          />
+        )
+      )}
 
         {vista === "analisis" && (
           <>
@@ -502,9 +511,26 @@ const guardar = async (form) => {
   const actualizar = (prod) => { setData(ps => ps.map(p => p.id === prod.id ? prod : p)); setDetalle(prod); };
 
   if (detalle) {
-    const prod = data.find(p => p.id === detalle.id);
-    return <DetalleProducto producto={prod} onVolver={() => setDetalle(null)} onActualizar={actualizar} />;
+  const prod = data.find(p => p.id === detalle.id);
+
+  if (!prod.tieneMarcas) {
+    return (
+      <DetalleProductoSimple
+        producto={prod}
+        onVolver={() => setDetalle(null)}
+        onActualizar={actualizar}
+      />
+    );
   }
+
+  return (
+    <DetalleProducto
+      producto={prod}
+      onVolver={() => setDetalle(null)}
+      onActualizar={actualizar}
+    />
+  );
+}
 
 
 const filtrados = data.filter(
