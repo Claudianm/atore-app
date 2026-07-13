@@ -130,9 +130,18 @@ function margenColor(pct) {
   return "#d85a30";
 }
 function stockTotal(p) {
+  if (!p.tieneMarcas) {
+    return p.stock || 0;
+  }
+
   return (p.marcas || []).reduce((a, m) => a + m.stock, 0);
 }
+
 function minimoTotal(p) {
+  if (!p.tieneMarcas) {
+    return p.minimo || 0;
+  }
+
   return (p.marcas || []).reduce((a, m) => a + m.minimo, 0);
 }
 function estadoStock(stock, minimo) { return stock === 0 ? "sin" : stock < minimo ? "poco" : "ok"; }
@@ -475,6 +484,7 @@ function Inventario({ data, setData, session }) {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevaCategoria, setNuevaCategoria] = useState("Alimentos");
   const [tieneMarcas, setTieneMarcas] = useState(true);
+  const [tipoVenta, setTipoVenta] = useState("unidad");
 
 const guardar = async (form) => {
   if (form.id) {
@@ -490,6 +500,7 @@ const guardar = async (form) => {
     nombre: form.nombre,
     categoria: form.categoria, 
     tieneMarcas: form.tieneMarcas,
+    tipoVenta: form.tipoVenta,
     marcas: []
   };
 
@@ -599,7 +610,25 @@ const marcas = p.marcas || [];
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                 <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Stock total: <strong style={{ color: "var(--color-text-primary,#111)" }}>{st}</strong></span>
                 <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setModal(p)} style={{ background: "var(--color-background-secondary,#f5f4f0)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Editar</button>
+                  <button
+  onClick={() => {
+    setModal(p);
+    setNuevoNombre(p.nombre);
+    setNuevaCategoria(p.categoria);
+    setTieneMarcas(p.tieneMarcas);
+    setTipoVenta(p.tipoVenta || "unidad");
+  }}
+  style={{
+    background: "var(--color-background-secondary,#f5f4f0)",
+    border: "0.5px solid var(--color-border-tertiary,#ddd)",
+    borderRadius: 6,
+    padding: "5px 10px",
+    fontSize: 12,
+    cursor: "pointer"
+  }}
+>
+  Editar
+</button>
                   <button onClick={() => setBorrar(p)} style={{ background: "#fcebeb", border: "0.5px solid #f7c1c1", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", color: "#a32d2d" }}>Borrar</button>
                 </div>
               </div>
@@ -609,7 +638,7 @@ const marcas = p.marcas || [];
       </div>
       <FAB label="+ Nuevo producto" onClick={() => setModal("nuevo")} />
       {modal && (
-        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() => guardar(modal === "nuevo" ? { nombre: nuevoNombre, categoria: nuevaCategoria, tieneMarcas } : modal)} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
+        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() => guardar(modal === "nuevo" ? { nombre: nuevoNombre, categoria: nuevaCategoria, tieneMarcas, tipoVenta } : modal)} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
           {(() => {
             
             return (
@@ -634,6 +663,16 @@ const marcas = p.marcas || [];
     <option value="no">No</option>
   </select>
 </Campo>
+<Campo label="¿Cómo se vende?">
+  <select
+    style={inputStyle}
+    value={tipoVenta}
+    onChange={(e) => setTipoVenta(e.target.value)}
+  >
+    <option value="unidad">Por unidad</option>
+    <option value="peso">Por kilo</option>
+  </select>
+</Campo>
 
 <div
   style={{
@@ -646,7 +685,7 @@ const marcas = p.marcas || [];
     ? "Las marcas se agregan desde el detalle del producto."
     : "Este producto no utilizará marcas ni variedades."}
 </div>
-                <button onClick={() => { guardar(modal === "nuevo" ? { nombre: n, categoria: c } : { ...modal, nombre: n, categoria: c }); }} style={{ display: "none" }} />
+                <button onClick={() => { guardar(modal === "nuevo" ? { nombre: n, categoria: c, tipoVenta: tipoVenta } : { ...modal, nombre: n, categoria: c, tipoVenta: tipoVenta }); }} style={{ display: "none" }} />
               </>
             );
           })()}
@@ -956,12 +995,35 @@ useEffect(() => {
   }
 }, [session, vista, fechaHistorial]);
 const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
+
   const productoInv = inventario.find(
     p => p.nombre === producto
   );
 
   if (!productoInv) return;
 
+  // Producto SIN marcas
+  if (!productoInv.tieneMarcas) {
+
+    const { error } = await supabase
+      .from("inventario")
+      .update({
+  stock: (productoInv.stock || 0) - cantidadVendida
+})
+      .eq("id", productoInv.id);
+      console.log("Producto:", productoInv);
+console.log("ID:", productoInv.id);
+console.log("Nuevo stock:", (productoInv.stock || 0) - cantidadVendida);
+console.log("Error:", error);
+
+    if (error) {
+      console.error(error);
+    }
+
+    return;
+  }
+
+  // Producto CON marcas
   const marcas = [...productoInv.marcas];
 
   const indice = marcas.findIndex(
@@ -983,7 +1045,6 @@ const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
 
   if (error) {
     console.error(error);
-    return;
   }
 };
 const gananciaDelDia = ventas.reduce(
@@ -1135,27 +1196,40 @@ const productoInv = inventario.find(
   p => p.nombre === producto
 );
 
-if (!productoInv || !productoInv.marcas.length) {
-  alert("El producto no tiene precio configurado.");
+if (!productoInv) {
+  alert("Producto no encontrado.");
   return;
 }
 
-let marca;
+let costoUnitario;
+let precioUnitario;
 
-if (productoInv.marcas.length === 1) {
-  marca = productoInv.marcas[0];
-} else {
-  marca = productoInv.marcas.find(
-    m => m.marca === marcaSeleccionada
-  );
+if (productoInv.tieneMarcas) {
 
-  if (!marca) {
-    alert("Seleccione una marca.");
-    return;
+  let marca;
+
+  if (productoInv.marcas.length === 1) {
+    marca = productoInv.marcas[0];
+  } else {
+    marca = productoInv.marcas.find(
+      m => m.marca === marcaSeleccionada
+    );
+
+    if (!marca) {
+      alert("Seleccione una marca.");
+      return;
+    }
   }
+
+  costoUnitario = marca.precioCompra;
+  precioUnitario = marca.precioVenta;
+
+} else {
+
+  costoUnitario = productoInv.precioCompra;
+  precioUnitario = productoInv.precioVenta;
+
 }
-const costoUnitario = marca.precioCompra;
-const precioUnitario = marca.precioVenta;
 const total = precioUnitario * cantidad;
 const { data, error } = await supabase
   .from("ventas_diarias")
@@ -1164,7 +1238,7 @@ const { data, error } = await supabase
       user_id: session.user.id,
       fecha: hoy,
       producto,
-      marca: marca.marca,
+      marca: productoInv.tieneMarcas ? marca.marca : null,
       cantidad,
       costo_unitario: costoUnitario,
       precio_unitario: precioUnitario,
@@ -1180,22 +1254,38 @@ if (error) {
   return;
 }
     setVentas(v => [...v, data]);
-await actualizarInventario(producto, marca.marca, cantidad);
-const nuevoInventario = inventario.map(p => {
+await actualizarInventario(
+  producto,
+  productoInv.tieneMarcas ? marca.marca : null,
+  cantidad
+);
+    const nuevoInventario = inventario.map(p => {
+
   if (p.nombre !== producto) return p;
+
+  if (p.tieneMarcas) {
+
+    return {
+      ...p,
+      marcas: p.marcas.map(m =>
+        m.marca === marca.marca
+          ? {
+              ...m,
+              stock: m.stock - cantidad,
+              vendidos: (m.vendidos || 0) + cantidad
+            }
+          : m
+      )
+    };
+
+  }
 
   return {
     ...p,
-    marcas: p.marcas.map(m =>
-      m.marca === marca.marca
-        ? {
-            ...m,
-            stock: m.stock - cantidad,
-            vendidos: (m.vendidos || 0) + cantidad
-          }
-        : m
-    )
+    stock: (p.stock || 0) - cantidad,
+    vendidos: (p.vendidos || 0) + cantidad
   };
+
 });
 
 setInventario(nuevoInventario);
