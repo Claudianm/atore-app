@@ -22,6 +22,21 @@ function AuthScreen() {
     if (error) setError("Email o contraseña incorrectos");
     setLoading(false);
   };
+  const recuperarClave = async () => {
+  if (!email) {
+    setError("Escribe tu correo primero");
+    return;
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
+
+  if (error) {
+    setError(error.message);
+    return;
+  }
+
+  alert("Revisa tu correo para recuperar la contraseña");
+};
 
   const handleRegister = async () => {
     if (!nombreNegocio.trim()) { setError("Ingresa el nombre de tu almacén"); return; }
@@ -79,6 +94,21 @@ function AuthScreen() {
               style={{ width: "100%", padding: "14px", background: loading ? "#ccc" : "#1a3a2a", color: "white", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer" }}>
               {loading ? "Cargando..." : modo === "login" ? "Ingresar" : "Crear cuenta gratis"}
             </button>
+            {modo === "login" && (
+  <button
+    onClick={recuperarClave}
+    style={{
+      marginTop: 12,
+      background: "none",
+      border: "none",
+      color: "#1a3a2a",
+      cursor: "pointer",
+      fontSize: 13
+    }}
+  >
+    ¿No recuerdas tu clave?
+  </button>
+)}
           </>
         )}
       </div>
@@ -305,9 +335,10 @@ const [modalMarca, setModalMarca] = useState(null);
     : [...producto.marcas, { ...form, id: Date.now() }];
 
   const { error } = await supabase
-    .from("inventario")
-    .update({ marcas })
-    .eq("id", producto.id);
+  .from("inventario")
+  .update({ marcas })
+  .eq("id", producto.id)
+  .eq("user_id", session.user.id);
 
   if (error) {
     console.error(error);
@@ -488,12 +519,36 @@ function Inventario({ data, setData, session }) {
 
 const guardar = async (form) => {
   if (form.id) {
-    setData(ps =>
-      ps.map(p => p.id === form.id ? { ...p, ...form } : p)
-    );
-    setModal(null);
+
+  const datosActualizar = {
+  nombre: form.nombre,
+  categoria: form.categoria,
+  tieneMarcas: form.tieneMarcas,
+  tipoVenta: form.tipoVenta
+};
+
+const { data: productoActualizado, error } = await supabase
+  .from("inventario")
+  .update(datosActualizar)
+  .eq("id", form.id)
+  .select()
+  .single();
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
     return;
   }
+
+  setData(ps =>
+    ps.map(p =>
+      p.id === productoActualizado.id ? productoActualizado : p
+    )
+  );
+
+  setModal(null);
+  return;
+}
 
   const nuevoProducto = {
     user_id: session.user.id,
@@ -638,7 +693,26 @@ const marcas = p.marcas || [];
       </div>
       <FAB label="+ Nuevo producto" onClick={() => setModal("nuevo")} />
       {modal && (
-        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() => guardar(modal === "nuevo" ? { nombre: nuevoNombre, categoria: nuevaCategoria, tieneMarcas, tipoVenta } : modal)} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
+        <ModalBase titulo={modal === "nuevo" ? "Nuevo producto" : "Editar producto"} onCerrar={() => setModal(null)} onGuardar={() =>
+  guardar(
+    modal === "nuevo"
+      ? {
+          nombre: nuevoNombre,
+  categoria: nuevaCategoria,
+  tieneMarcas,
+  tipoVenta,
+  user_id: session.user.id
+        }
+      : {
+          ...modal,
+          nombre: nuevoNombre,
+          categoria: nuevaCategoria,
+          tieneMarcas,
+          tipoVenta,
+          user_id: session.user.id
+        }
+  )
+} valido={true} labelGuardar={modal === "nuevo" ? "Crear producto" : "Guardar"}>
           {(() => {
             
             return (
@@ -685,7 +759,27 @@ const marcas = p.marcas || [];
     ? "Las marcas se agregan desde el detalle del producto."
     : "Este producto no utilizará marcas ni variedades."}
 </div>
-                <button onClick={() => { guardar(modal === "nuevo" ? { nombre: n, categoria: c, tipoVenta: tipoVenta } : { ...modal, nombre: n, categoria: c, tipoVenta: tipoVenta }); }} style={{ display: "none" }} />
+<button
+  onClick={() => {
+    guardar(
+      modal === "nuevo"
+        ? {
+            nombre: nuevoNombre,
+            categoria: nuevaCategoria,
+            tieneMarcas: tieneMarcas,
+            tipoVenta: tipoVenta
+          }
+        : {
+            ...modal,
+            nombre: nuevoNombre,
+            categoria: nuevaCategoria,
+            tieneMarcas: tieneMarcas,
+            tipoVenta: tipoVenta
+          }
+    );
+  }}
+  style={{ display: "none" }}
+/>
               </>
             );
           })()}
@@ -695,10 +789,12 @@ const marcas = p.marcas || [];
   <ConfirmarBorrar
     titulo="producto"
     onConfirmar={async () => {
+      if (!session) return;
       const { error } = await supabase
-        .from("inventario")
-        .delete()
-        .eq("id", borrar.id);
+  .from("inventario")
+  .delete()
+  .eq("id", borrar.id)
+  .eq("user_id", session.user.id);
 
       if (error) {
         alert(error.message);
@@ -737,6 +833,7 @@ function Pagos({ data, setData, session }) {
   const [borrar, setBorrar] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const guardar = async (form) => {
+  if (!session) return;
   if (form.id) {
     setData(ps =>
       ps.map(p => p.id === form.id ? form : p)
@@ -997,8 +1094,8 @@ useEffect(() => {
 const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
 
   const productoInv = inventario.find(
-    p => p.nombre === producto
-  );
+  p => p.nombre.trim().toLowerCase() === producto.trim().toLowerCase()
+);
 
   if (!productoInv) return;
 
@@ -1010,7 +1107,8 @@ const actualizarInventario = async (producto, marcaNombre, cantidadVendida) => {
       .update({
   stock: (productoInv.stock || 0) - cantidadVendida
 })
-      .eq("id", productoInv.id);
+      .eq("id", productoInv.id)
+      .eq("user_id", session.user.id);
       console.log("Producto:", productoInv);
 console.log("ID:", productoInv.id);
 console.log("Nuevo stock:", (productoInv.stock || 0) - cantidadVendida);
@@ -1039,9 +1137,10 @@ console.log("Error:", error);
   };
 
   const { error } = await supabase
-    .from("inventario")
-    .update({ marcas })
-    .eq("id", productoInv.id);
+  .from("inventario")
+  .update({ marcas })
+  .eq("id", producto.id)
+  .eq("user_id", session.user.id);
 
   if (error) {
     console.error(error);
@@ -1974,21 +2073,73 @@ const cerrarSesion = async () => {
     </div>
   );
 }
+function CambiarClave() {
+  const [clave, setClave] = useState("");
+  const [repetir, setRepetir] = useState("");
 
+  const cambiar = async () => {
+    if (clave !== repetir) {
+      alert("Las claves no coinciden");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: clave
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Clave cambiada correctamente");
+    window.location.reload();
+  };
+
+  return (
+    <div>
+      <h2>Cambiar contraseña</h2>
+
+      <input
+        type="password"
+        placeholder="Nueva contraseña"
+        value={clave}
+        onChange={(e) => setClave(e.target.value)}
+      />
+
+      <input
+        type="password"
+        placeholder="Repetir contraseña"
+        value={repetir}
+        onChange={(e) => setRepetir(e.target.value)}
+      />
+
+      <button onClick={cambiar}>
+        Cambiar contraseña
+      </button>
+    </div>
+  );
+}
 export default function AlmacenApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recuperandoClave, setRecuperandoClave] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-      
+      setRecuperandoClave(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoading(false);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+  if (event === "PASSWORD_RECOVERY") {
+    setRecuperandoClave(true);
+  } else {
+    setSession(session);
+  }
+
+  setLoading(false);
+});
     
     return () => subscription.unsubscribe();
   }, []);
@@ -2002,7 +2153,9 @@ const cerrarSesion = async () => {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
-
+if (recuperandoClave) {
+  return <CambiarClave />;
+}
   if (!session) return <AuthScreen />;
 
   return <AlmacenAppInner session={session} />;
