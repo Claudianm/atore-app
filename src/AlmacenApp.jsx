@@ -2129,12 +2129,11 @@ export default function AlmacenApp() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-      setRecuperandoClave(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
   if (event === "PASSWORD_RECOVERY") {
     setRecuperandoClave(true);
-  } else {
+  } else { 
     setSession(session);
   }
 
