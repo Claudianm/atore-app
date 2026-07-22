@@ -1,0 +1,1 @@
+export const inputStyle = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary,#ccc)", fontSize: 14, background: "var(--color-background-secondary,#f8f8f6)", boxSizing: "border-box" };

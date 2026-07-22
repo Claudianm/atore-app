@@ -2,7 +2,19 @@ import AuthScreen from "./AuthScreen";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import DetalleProductoSimple from "./DetalleProductoSimple";
-
+import Filtros from "./components/Filtros";
+import FAB from "./components/FAB";
+import {
+  CATEGORIAS,
+  TIPOS_PAGO,
+  ESTADOS_PEDIDO,
+  TIPOS_REC,
+  ICONOS_PAGO,
+  ICONOS_REC,
+  PRIORIDADES,
+  ESTADO_ESTILOS,
+  PRIORIDAD_ESTILOS
+} from "./constants";
 const supabase = createClient(
   "https://rstkjtuwvpdaowbqtspc.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzdGtqdHV3dnBkYW93YnF0c3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMzQ5NzYsImV4cCI6MjA5NDcxMDk3Nn0.qT_kQFGqkNs5i9duoVZure_fVP9XhLn54W0yRmSrYuE"
@@ -11,25 +23,6 @@ const supabase = createClient(
 // ============ CONSTANTES ============
 const hoy = new Date().toISOString().slice(0, 10);
 const mesActual = new Date().toISOString().slice(0, 7);
-
-const CATEGORIAS = ["Todos", "Alimentos", "Bebidas", "Limpieza", "Lácteos", "Otros"];
-const TIPOS_PAGO = ["Todos", "Venta", "Gasto", "Fiado", "Proveedor"];
-const ESTADOS_PEDIDO = ["Todos", "Pendiente", "En camino", "Recibido", "Cancelado"];
-const TIPOS_REC = ["Todos", "Fiado", "Pago", "Pedido", "Otro"];
-const ICONOS_PAGO = { Venta: "💰", Gasto: "🧾", Fiado: "🤝", Proveedor: "🚚" };
-const ICONOS_REC  = { Fiado: "🤝", Pago: "💰", Pedido: "🚚", Otro: "📌" };
-const PRIORIDADES = ["Alta", "Media", "Baja"];
-const ESTADO_ESTILOS = {
-  Pendiente:   { background: "#faeeda", color: "#854f0b" },
-  "En camino": { background: "#e6f1fb", color: "#185fa5" },
-  Recibido:    { background: "#eaf3de", color: "#3b6d11" },
-  Cancelado:   { background: "#f0f0f0", color: "#888" },
-};
-const PRIORIDAD_ESTILOS = {
-  Alta:  { background: "#fcebeb", color: "#a32d2d" },
-  Media: { background: "#faeeda", color: "#854f0b" },
-  Baja:  { background: "#eaf3de", color: "#3b6d11" },
-};
 
 function formatPesos(n) { return "$" + Number(n).toLocaleString("es-CL"); }
 function esIngreso(tipo) { return tipo === "Venta"; }
@@ -101,32 +94,7 @@ function SelectorBotones({ opciones, activo, onChange, iconos }) {
     </div>
   );
 }
-function Filtros({ opciones, activo, onChange, iconos }) {
-  return (
-<div
-  style={{
-    display: "flex",
-    gap: 6,
-    padding: "10px 18px 10px 14px",
-    overflowX: "scroll",
-    scrollbarWidth: "none"
-  }}
->
-    {opciones.map(o => (
-        <button key={o} onClick={() => onChange(o)} style={{ padding: "5px 10px", borderRadius: 20, fontSize: 12, FlexShrink: 0, cursor: "pointer", border: "1px solid", boxSizing: "border-box", flexShrink: 0, transition: "all 0.15s", background: activo === o ? "#1a3a2a" : "var(--color-background-primary,#fff)", color: activo === o ? "white" : "var(--color-text-secondary,#888)", borderColor: activo === o ? "#1a3a2a" : "var(--color-border-tertiary,#ddd)" }}>
-          {iconos && o !== "Todos" ? iconos[o] + " " : ""}{o}
-        </button>
-      ))}
-    </div>
-  );
-}
-function FAB({ label, onClick }) {
-  return (
-    <div style={{ position: "fixed", bottom: 72, right: 18 }}>
-      <button onClick={onClick} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 28, padding: "12px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", boxShadow: "0 4px 16px rgba(26,58,42,0.35)" }}>{label}</button>
-    </div>
-  );
-}
+
 function ModalBase({ titulo, onCerrar, children, onGuardar, valido, labelGuardar }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }}>
@@ -397,6 +365,130 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
   );
 }
 
+
+// ============ PAGOS ============
+function ModalPago({ pago, onGuardar, onCerrar }) {
+  const [form, setForm] = useState(pago || { tipo: "Venta", descripcion: "", monto: "", fecha: hoy, pagado: true });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const valido = form.descripcion.trim() && form.monto !== "";
+  return (
+    <ModalBase titulo={pago ? "Editar registro" : "Nuevo registro"} onCerrar={onCerrar} onGuardar={() => onGuardar(form)} valido={valido} labelGuardar={pago ? "Guardar cambios" : "Agregar registro"}>
+      <Campo label="Tipo"><SelectorBotones opciones={TIPOS_PAGO.filter(t => t !== "Todos")} activo={form.tipo} onChange={v => set("tipo", v)} iconos={ICONOS_PAGO} /></Campo>
+      <Campo label="Descripción"><input style={inputStyle} type="text" value={form.descripcion} placeholder="Ej: Venta del día, Juan..." onChange={e => set("descripcion", e.target.value)} /></Campo>
+      <Campo label="Monto ($)"><input style={inputStyle} type="number" value={form.monto} placeholder="0" onChange={e => set("monto", e.target.value === "" ? "" : Number(e.target.value))} /></Campo>
+      <Campo label="Fecha"><input style={inputStyle} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Campo>
+      {form.tipo === "Fiado" && (<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}><input type="checkbox" id="pagado" checked={form.pagado} onChange={e => set("pagado", e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="pagado" style={{ fontSize: 14 }}>Ya fue pagado</label></div>)}
+    </ModalBase>
+  );
+}
+function Pagos({ data, setData, session }) {
+  const [filtro, setFiltro] = useState("Todos");
+  const [tab, setTab] = useState("lista");
+  const [modal, setModal] = useState(null);
+  const [borrar, setBorrar] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const guardar = async (form) => {
+  if (!session) return;
+  if (form.id) {
+    setData(ps =>
+      ps.map(p => p.id === form.id ? form : p)
+    );
+    setModal(null);
+    return;
+  }
+
+  const nuevoPago = {
+  user_id: session.user.id,
+  tipo: form.tipo,
+  descripcion: form.descripcion,
+  monto: form.monto,
+  fecha: form.fecha,
+  pagado: form.pagado || false
+};
+  const { data: pagoGuardado, error } = await supabase
+    .from("pagos")
+    .insert([nuevoPago])
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
+    return;
+  }
+
+  setData(ps => [pagoGuardado, ...ps]);
+  setModal(null);
+};
+  const filtrados = data.filter(p => {
+  const nombre = (p.descripcion || "").toLowerCase();
+  const texto = (busqueda || "").toLowerCase();
+
+  return (
+    (filtro === "Todos" || p.tipo === filtro) &&
+    nombre.includes(texto)
+  );
+});
+  const totalIngresos = data.filter(p => esIngreso(p.tipo)).reduce((a, p) => a + p.monto, 0);
+  const totalGastos = data.filter(p => !esIngreso(p.tipo) && p.tipo !== "Fiado").reduce((a, p) => a + p.monto, 0);
+  const fiados = data.filter(p => p.tipo === "Fiado" && !p.pagado);
+  const totalFiado = fiados.reduce((a, p) => a + p.monto, 0);
+  const balance = totalIngresos - totalGastos;
+  return (
+    <>
+      <div style={{ background: "#1a3a2a", padding: "16px 16px 14px" }}>
+        <div style={{ color: "#7fbb95", fontSize: 11, marginBottom: 2 }}>Pagos </div>
+        <div style={{ color: "#e8f5ee", fontSize: 20, fontWeight: 500, marginBottom: 12 }}>Balance: <span style={{ color: balance >= 0 ? "#7febb8" : "#f28b7a" }}>{formatPesos(balance)}</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {[{ v: formatPesos(totalIngresos), c: "#7febb8", l: "Ingresos" }, { v: formatPesos(totalGastos), c: "#f28b7a", l: "Gastos" }, { v: formatPesos(totalFiado), c: "#ef9f27", l: "Fiado" }].map(x => (
+            <div key={x.l} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 13, fontWeight: 500, color: x.c }}>{x.v}</div><div style={{ fontSize: 10, color: "#7fbb95" }}>{x.l}</div></div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", background: "var(--color-background-primary,#fff)", borderBottom: "0.5px solid var(--color-border-tertiary,#ddd)" }}>
+        {[{ k: "lista", l: "Registros" }, { k: "fiados", l: `Fiados (${fiados.length})` }].map(t => (
+          <button key={t.k} onClick={() => setTab(t.k)} style={{ flex: 1, padding: "10px", fontSize: 13, background: "none", border: "none", cursor: "pointer", color: tab === t.k ? "#1a3a2a" : "var(--color-text-secondary,#888)", borderBottom: tab === t.k ? "2px solid #1a3a2a" : "2px solid transparent", fontWeight: tab === t.k ? 500 : 400 }}>{t.l}</button>
+        ))}
+      </div>
+      {tab === "lista" && (
+        <>
+          <Filtros opciones={TIPOS_PAGO} activo={filtro} onChange={setFiltro} iconos={ICONOS_PAGO} />
+          <div style={{ padding: "0 14px", paddingBottom: 8 }}>
+            {filtrados.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Aún no tienes registros.
+          Pulsa “+ Registrar” para comenzar.</div>}
+            {filtrados.map(p => (
+              <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div><div style={{ fontWeight: 500, fontSize: 14 }}>{ICONOS_PAGO[p.tipo]} {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.tipo} · {p.fecha}{p.tipo === "Fiado" && <span style={{ marginLeft: 6, ...(p.pagado ? { background: "#eaf3de", color: "#3b6d11" } : { background: "#faeeda", color: "#854f0b" }), padding: "1px 7px", borderRadius: 10, fontSize: 11 }}>{p.pagado ? "Pagado" : "Pendiente"}</span>}</div></div>
+                  <span style={{ fontWeight: 500, fontSize: 14, color: esIngreso(p.tipo) ? "#1d9e75" : "#d85a30" }}>{esIngreso(p.tipo) ? "+" : "-"}{formatPesos(p.monto)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setModal(p)} style={{ background: "var(--color-background-secondary,#f5f4f0)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Editar</button>
+                  <button onClick={() => setBorrar(p)} style={{ background: "#fcebeb", border: "0.5px solid #f7c1c1", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", color: "#a32d2d" }}>Borrar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {tab === "fiados" && (
+        <div style={{ padding: "14px" }}>
+          {fiados.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>🎉 Sin fiados pendientes</div>}
+          {fiados.map(p => (
+            <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid #f7c1c1", borderLeft: "3px solid #ef9f27", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><div><div style={{ fontWeight: 500, fontSize: 14 }}>🤝 {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Desde {p.fecha}</div></div><span style={{ fontWeight: 500, color: "#d85a30" }}>{formatPesos(p.monto)}</span></div>
+              <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, pagado: true } : x))} style={{ width: "100%", marginTop: 10, padding: "8px", background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer" }}>✓ Marcar como pagado</button>
+            </div>
+          ))}
+          {fiados.length > 0 && <div style={{ padding: "10px 14px", background: "var(--color-background-secondary,#f5f4f0)", borderRadius: 10, textAlign: "center", fontSize: 13 }}>Total pendiente: <strong style={{ color: "#d85a30" }}>{formatPesos(totalFiado)}</strong></div>}
+        </div>
+      )}
+      <FAB label="+ Registrar" onClick={() => setModal("nuevo")} />
+      {modal && <ModalPago pago={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
+      {borrar && <ConfirmarBorrar titulo="registro" onConfirmar={() => { setData(ps => ps.filter(p => p.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+    </>
+  );
+}
 function Inventario({ data, setData, session }) {
   const [busqueda, setBusqueda] = useState("");
   const [categoria, setCategoria] = useState("Todos");
@@ -702,131 +794,6 @@ const marcas = p.marcas || [];
     </>
   );
 }
-
-// ============ PAGOS ============
-function ModalPago({ pago, onGuardar, onCerrar }) {
-  const [form, setForm] = useState(pago || { tipo: "Venta", descripcion: "", monto: "", fecha: hoy, pagado: true });
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const valido = form.descripcion.trim() && form.monto !== "";
-  return (
-    <ModalBase titulo={pago ? "Editar registro" : "Nuevo registro"} onCerrar={onCerrar} onGuardar={() => onGuardar(form)} valido={valido} labelGuardar={pago ? "Guardar cambios" : "Agregar registro"}>
-      <Campo label="Tipo"><SelectorBotones opciones={TIPOS_PAGO.filter(t => t !== "Todos")} activo={form.tipo} onChange={v => set("tipo", v)} iconos={ICONOS_PAGO} /></Campo>
-      <Campo label="Descripción"><input style={inputStyle} type="text" value={form.descripcion} placeholder="Ej: Venta del día, Juan..." onChange={e => set("descripcion", e.target.value)} /></Campo>
-      <Campo label="Monto ($)"><input style={inputStyle} type="number" value={form.monto} placeholder="0" onChange={e => set("monto", e.target.value === "" ? "" : Number(e.target.value))} /></Campo>
-      <Campo label="Fecha"><input style={inputStyle} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Campo>
-      {form.tipo === "Fiado" && (<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}><input type="checkbox" id="pagado" checked={form.pagado} onChange={e => set("pagado", e.target.checked)} style={{ width: 18, height: 18 }} /><label htmlFor="pagado" style={{ fontSize: 14 }}>Ya fue pagado</label></div>)}
-    </ModalBase>
-  );
-}
-function Pagos({ data, setData, session }) {
-  const [filtro, setFiltro] = useState("Todos");
-  const [tab, setTab] = useState("lista");
-  const [modal, setModal] = useState(null);
-  const [borrar, setBorrar] = useState(null);
-  const [busqueda, setBusqueda] = useState("");
-  const guardar = async (form) => {
-  if (!session) return;
-  if (form.id) {
-    setData(ps =>
-      ps.map(p => p.id === form.id ? form : p)
-    );
-    setModal(null);
-    return;
-  }
-
-  const nuevoPago = {
-  user_id: session.user.id,
-  tipo: form.tipo,
-  descripcion: form.descripcion,
-  monto: form.monto,
-  fecha: form.fecha,
-  pagado: form.pagado || false
-};
-  const { data: pagoGuardado, error } = await supabase
-    .from("pagos")
-    .insert([nuevoPago])
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    alert(error.message);
-    return;
-  }
-
-  setData(ps => [pagoGuardado, ...ps]);
-  setModal(null);
-};
-  const filtrados = data.filter(p => {
-  const nombre = (p.descripcion || "").toLowerCase();
-  const texto = (busqueda || "").toLowerCase();
-
-  return (
-    (filtro === "Todos" || p.tipo === filtro) &&
-    nombre.includes(texto)
-  );
-});
-  const totalIngresos = data.filter(p => esIngreso(p.tipo)).reduce((a, p) => a + p.monto, 0);
-  const totalGastos = data.filter(p => !esIngreso(p.tipo) && p.tipo !== "Fiado").reduce((a, p) => a + p.monto, 0);
-  const fiados = data.filter(p => p.tipo === "Fiado" && !p.pagado);
-  const totalFiado = fiados.reduce((a, p) => a + p.monto, 0);
-  const balance = totalIngresos - totalGastos;
-  return (
-    <>
-      <div style={{ background: "#1a3a2a", padding: "16px 16px 14px" }}>
-        <div style={{ color: "#7fbb95", fontSize: 11, marginBottom: 2 }}>Pagos </div>
-        <div style={{ color: "#e8f5ee", fontSize: 20, fontWeight: 500, marginBottom: 12 }}>Balance: <span style={{ color: balance >= 0 ? "#7febb8" : "#f28b7a" }}>{formatPesos(balance)}</span></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {[{ v: formatPesos(totalIngresos), c: "#7febb8", l: "Ingresos" }, { v: formatPesos(totalGastos), c: "#f28b7a", l: "Gastos" }, { v: formatPesos(totalFiado), c: "#ef9f27", l: "Fiado" }].map(x => (
-            <div key={x.l} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 13, fontWeight: 500, color: x.c }}>{x.v}</div><div style={{ fontSize: 10, color: "#7fbb95" }}>{x.l}</div></div>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: "flex", background: "var(--color-background-primary,#fff)", borderBottom: "0.5px solid var(--color-border-tertiary,#ddd)" }}>
-        {[{ k: "lista", l: "Registros" }, { k: "fiados", l: `Fiados (${fiados.length})` }].map(t => (
-          <button key={t.k} onClick={() => setTab(t.k)} style={{ flex: 1, padding: "10px", fontSize: 13, background: "none", border: "none", cursor: "pointer", color: tab === t.k ? "#1a3a2a" : "var(--color-text-secondary,#888)", borderBottom: tab === t.k ? "2px solid #1a3a2a" : "2px solid transparent", fontWeight: tab === t.k ? 500 : 400 }}>{t.l}</button>
-        ))}
-      </div>
-      {tab === "lista" && (
-        <>
-          <Filtros opciones={TIPOS_PAGO} activo={filtro} onChange={setFiltro} iconos={ICONOS_PAGO} />
-          <div style={{ padding: "0 14px", paddingBottom: 8 }}>
-            {filtrados.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Aún no tienes registros.
-          Pulsa “+ Registrar” para comenzar.</div>}
-            {filtrados.map(p => (
-              <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div><div style={{ fontWeight: 500, fontSize: 14 }}>{ICONOS_PAGO[p.tipo]} {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.tipo} · {p.fecha}{p.tipo === "Fiado" && <span style={{ marginLeft: 6, ...(p.pagado ? { background: "#eaf3de", color: "#3b6d11" } : { background: "#faeeda", color: "#854f0b" }), padding: "1px 7px", borderRadius: 10, fontSize: 11 }}>{p.pagado ? "Pagado" : "Pendiente"}</span>}</div></div>
-                  <span style={{ fontWeight: 500, fontSize: 14, color: esIngreso(p.tipo) ? "#1d9e75" : "#d85a30" }}>{esIngreso(p.tipo) ? "+" : "-"}{formatPesos(p.monto)}</span>
-                </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
-                  <button onClick={() => setModal(p)} style={{ background: "var(--color-background-secondary,#f5f4f0)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Editar</button>
-                  <button onClick={() => setBorrar(p)} style={{ background: "#fcebeb", border: "0.5px solid #f7c1c1", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", color: "#a32d2d" }}>Borrar</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-      {tab === "fiados" && (
-        <div style={{ padding: "14px" }}>
-          {fiados.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>🎉 Sin fiados pendientes</div>}
-          {fiados.map(p => (
-            <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid #f7c1c1", borderLeft: "3px solid #ef9f27", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><div><div style={{ fontWeight: 500, fontSize: 14 }}>🤝 {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Desde {p.fecha}</div></div><span style={{ fontWeight: 500, color: "#d85a30" }}>{formatPesos(p.monto)}</span></div>
-              <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, pagado: true } : x))} style={{ width: "100%", marginTop: 10, padding: "8px", background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer" }}>✓ Marcar como pagado</button>
-            </div>
-          ))}
-          {fiados.length > 0 && <div style={{ padding: "10px 14px", background: "var(--color-background-secondary,#f5f4f0)", borderRadius: 10, textAlign: "center", fontSize: 13 }}>Total pendiente: <strong style={{ color: "#d85a30" }}>{formatPesos(totalFiado)}</strong></div>}
-        </div>
-      )}
-      <FAB label="+ Registrar" onClick={() => setModal("nuevo")} />
-      {modal && <ModalPago pago={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
-      {borrar && <ConfirmarBorrar titulo="registro" onConfirmar={() => { setData(ps => ps.filter(p => p.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
-    </>
-  );
-}
-
 // ============ PEDIDOS ============
 function ModalPedido({ pedido, onGuardar, onCerrar }) {
   const [form, setForm] = useState(pedido || { proveedor: "", fecha: hoy, estado: "Pendiente", productos: [], monto: "" });
