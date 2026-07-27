@@ -188,16 +188,25 @@ const [modalMarca, setModalMarca] = useState(null);
   const [borrarMarca, setBorrarMarca] = useState(null);
   const [vista, setVista] = useState("stock");
 
-  const guardarMarca = async (form) => {
+const guardarMarca = async (form) => {
   const marcas = form.id
-    ? producto.marcas.map(m => m.id === form.id ? form : m)
+    ? producto.marcas.map(m => (m.id === form.id ? form : m))
     : [...producto.marcas, { ...form, id: Date.now() }];
 
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    alert("Sesión no encontrada");
+    return;
+  }
+
   const { error } = await supabase
-  .from("inventario")
-  .update({ marcas })
-  .eq("id", producto.id)
-  .eq("user_id", session.user.id);
+    .from("inventario")
+    .update({ marcas })
+    .eq("id", producto.id)
+    .eq("user_id", session.user.id);
 
   if (error) {
     console.error(error);
@@ -208,7 +217,6 @@ const [modalMarca, setModalMarca] = useState(null);
   onActualizar({ ...producto, marcas });
   setModalMarca(null);
 };
-
 const totalVendidos = (producto.marcas || []).reduce(
   (a, m) => a + (m.vendidos || 0),
   0
@@ -290,10 +298,11 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
           </>
         ) : (
           <DetalleProductoSimple
-            producto={producto}
-            onVolver={onVolver}
-            onActualizar={onActualizar}
-          />
+  producto={producto}
+  onVolver={onVolver}
+  onActualizar={onActualizar}
+  session={session}
+/>
         )
       )}
 
@@ -459,7 +468,7 @@ function Pagos({ data, setData, session }) {
             {filtrados.map(p => (
               <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div><div style={{ fontWeight: 500, fontSize: 14 }}>{ICONOS_PAGO[p.tipo]} {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.tipo} · {p.fecha}{p.tipo === "Fiado" && <span style={{ marginLeft: 6, ...(p.pagado ? { background: "#eaf3de", color: "#3b6d11" } : { background: "#faeeda", color: "#854f0b" }), padding: "1px 7px", borderRadius: 10, fontSize: 11 }}>{p.pagado ? "Pagado" : "Pendiente"}</span>}</div></div>
+                  <div><div style={{ fontWeight: 500, fontSize: 14 }}>{(ICONOS_PAGO || {})[p.tipo]} {p.descripcion}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.tipo} · {p.fecha}{p.tipo === "Fiado" && <span style={{ marginLeft: 6, ...(p.pagado ? { background: "#eaf3de", color: "#3b6d11" } : { background: "#faeeda", color: "#854f0b" }), padding: "1px 7px", borderRadius: 10, fontSize: 11 }}>{p.pagado ? "Pagado" : "Pendiente"}</span>}</div></div>
                   <span style={{ fontWeight: 500, fontSize: 14, color: esIngreso(p.tipo) ? "#1d9e75" : "#d85a30" }}>{esIngreso(p.tipo) ? "+" : "-"}{formatPesos(p.monto)}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
@@ -485,7 +494,28 @@ function Pagos({ data, setData, session }) {
       )}
       <FAB label="+ Registrar" onClick={() => setModal("nuevo")} />
       {modal && <ModalPago pago={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
-      {borrar && <ConfirmarBorrar titulo="registro" onConfirmar={() => { setData(ps => ps.filter(p => p.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+      {borrar && <ConfirmarBorrar titulo="registro" onConfirmar={async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) return;
+
+  const { error } = await supabase
+    .from("pagos")
+    .delete()
+    .eq("id", borrar.id)
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al borrar el registro");
+    return;
+  }
+
+  setData(ps => ps.filter(p => p.id !== borrar.id));
+  setBorrar(null);
+}} onCancelar={() => setBorrar(null)} />}
     </>
   );
 }
@@ -796,12 +826,38 @@ const marcas = p.marcas || [];
 }
 // ============ PEDIDOS ============
 function ModalPedido({ pedido, onGuardar, onCerrar }) {
-  const [form, setForm] = useState(pedido || { proveedor: "", fecha: hoy, estado: "Pendiente", productos: [], monto: "" });
+  const [form, setForm] = useState(
+  pedido || {
+    proveedor: "",
+    fecha: hoy,
+    estado: "Pendiente",
+    detalle: [],
+    monto: 0
+  }
+);
   const [prodInput, setProdInput] = useState("");
   const [theme, setTheme] = useState("light")
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const agregar = () => { const p = prodInput.trim(); if (p && !form.productos.includes(p)) { set("productos", [...form.productos, p]); setProdInput(""); } };
-  const valido = form.proveedor.trim() && form.productos.length > 0 && form.monto !== "";
+const agregarProducto = () => {
+  const p = prodInput.trim();
+
+  if (!p) return;
+
+  set("detalle", [
+    ...form.detalle,
+    {
+      productoId: null,
+      nombre: p,
+      cantidad: 1,
+      costoUnitario: 0
+    }
+  ]);
+
+  setProdInput("");
+};
+  const valido =
+  form.proveedor.trim() &&
+  form.detalle.length > 0;
   return (
     <ModalBase titulo={pedido ? "Editar pedido" : "Nuevo pedido"} onCerrar={onCerrar} onGuardar={() => onGuardar(form)} valido={valido} labelGuardar={pedido ? "Guardar cambios" : "Crear pedido"}>
       <Campo label="Proveedor"><input style={inputStyle} type="text" value={form.proveedor} placeholder="Ej: Distribuidora Norte" onChange={e => set("proveedor", e.target.value)} /></Campo>
@@ -809,10 +865,53 @@ function ModalPedido({ pedido, onGuardar, onCerrar }) {
       <Campo label="Fecha"><input style={inputStyle} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Campo>
       <Campo label="Estado"><SelectorBotones opciones={ESTADOS_PEDIDO.filter(e => e !== "Todos")} activo={form.estado} onChange={v => set("estado", v)} /></Campo>
       <Campo label="Productos">
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><input style={{ ...inputStyle, flex: 1 }} type="text" value={prodInput} placeholder="Ej: Arroz 1kg" onChange={e => setProdInput(e.target.value)} onKeyDown={e => e.key === "Enter" && agregar()} /><button onClick={agregar} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "0 14px", fontSize: 16, cursor: "pointer" }}>+</button></div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><input style={{ ...inputStyle, flex: 1 }} type="text" value={prodInput} placeholder="Ej: Arroz 1kg" onChange={e => setProdInput(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarProducto()} /><button onClick={agregarProducto} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "0 14px", fontSize: 16, cursor: "pointer" }}>+</button></div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {form.productos.map(p => (<span key={p} onClick={() => set("productos", form.productos.filter(x => x !== p))} style={{ background: "#eaf3de", color: "#3b6d11", border: "0.5px solid #b8dda0", borderRadius: 6, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}>{p} <span style={{ opacity: 0.6 }}>×</span></span>))}
-          {form.productos.length === 0 && <span style={{ fontSize: 12, color: "var(--color-text-secondary,#aaa)" }}>Aún no tienes productos agregados</span>}
+{form.detalle.map((item, i) => (
+  <div
+    key={i}
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      background: "#eaf3de",
+      border: "0.5px solid #b8dda0",
+      borderRadius: 6,
+      padding: "6px 8px",
+      marginBottom: 6
+    }}
+  >
+    <span>{item.nombre}</span>
+
+    <button
+      onClick={() =>
+        set(
+          "detalle",
+          form.detalle.filter((_, index) => index !== i)
+        )
+      }
+      style={{
+        background: "none",
+        border: "none",
+        color: "#a32d2d",
+        cursor: "pointer"
+      }}
+    >
+      ✕
+    </button>
+  </div>
+))}
+
+{form.detalle.length === 0 && (
+  <span style={{ fontSize: 12, color: "#888" }}>
+    Aún no has agregado productos
+  </span>
+)}
+{form.detalle.length === 0 && (
+  <span style={{ fontSize: 12, color: "var(--color-text-secondary,#aaa)" }}>
+    Aún no tienes productos agregados
+  </span>
+)}
         </div>
       </Campo>
     </ModalBase>
@@ -833,13 +932,13 @@ const guardar = async (form) => {
   }
 
   const nuevoPedido = {
-    user_id: session.user.id,
-    proveedor: form.proveedor,
-    fecha: form.fecha,
-    estado: form.estado,
-    productos: form.productos || [],
-    monto: form.monto
-  };
+  user_id: session.user.id,
+  proveedor: form.proveedor,
+  fecha: form.fecha,
+  estado: form.estado,
+  detalle: form.detalle || [],
+  monto: form.monto
+};
 
   const { data: pedidoGuardado, error } = await supabase
     .from("pedidos")
@@ -883,11 +982,33 @@ const guardar = async (form) => {
         {filtrados.map(p => (
           <div key={p.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div><div style={{ fontWeight: 500, fontSize: 14 }}>🚚 {p.proveedor}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.fecha} · {p.productos.length} productos · {formatPesos(p.monto)}</div></div>
-              <Badge label={p.estado} style={ESTADO_ESTILOS[p.estado] || {}} />
+              <div><div style={{ fontWeight: 500, fontSize: 14 }}>🚚 {p.proveedor}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>{p.fecha} · {(p.detalle || []).length} productos · {formatPesos(p.monto)}</div></div>
+<Badge
+  label={p.estado}
+  style={{
+    Pendiente: { background: "#faeeda", color: "#854f0b" },
+    "En camino": { background: "#e6f1fb", color: "#185fa5" },
+    Recibido: { background: "#eaf3de", color: "#3b6d11" },
+    Cancelado: { background: "#f0f0f0", color: "#888" }
+  }[p.estado] || {}}
+/>
             </div>
             <button onClick={() => setExpandido(expandido === p.id ? null : p.id)} style={{ background: "none", border: "none", fontSize: 12, color: "var(--color-text-secondary,#888)", cursor: "pointer", padding: "6px 0 0", display: "block" }}>{expandido === p.id ? "▲ Ocultar" : "▼ Ver productos"}</button>
-            {expandido === p.id && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{p.productos.map(prod => <span key={prod} style={{ background: "var(--color-background-secondary,#f5f4f0)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "var(--color-text-secondary,#666)" }}>{prod}</span>)}</div>}
+            {expandido === p.id && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{(p.detalle || p.productos || []).map((item, i) => (
+  <span
+    key={item.nombre || item || i}
+    style={{
+      background: "var(--color-background-secondary,#f5f4f0)",
+      border: "0.5px solid var(--color-border-tertiary,#ddd)",
+      borderRadius: 6,
+      padding: "3px 8px",
+      fontSize: 11,
+      color: "var(--color-text-secondary,#666)"
+    }}
+  >
+    {item.nombre || item}
+  </span>
+))}</div>}
             {p.estado !== "Recibido" && p.estado !== "Cancelado" && (
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 {p.estado === "Pendiente" && <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, estado: "En camino" } : x))} style={{ flex: 1, padding: "7px", background: "#e6f1fb", color: "#185fa5", border: "0.5px solid #b3d0f0", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>🚚 En camino</button>}
@@ -904,7 +1025,28 @@ const guardar = async (form) => {
       </div>
       <FAB label="+ Nuevo pedido" onClick={() => setModal("nuevo")} />
       {modal && <ModalPedido pedido={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
-      {borrar && <ConfirmarBorrar titulo="pedido" onConfirmar={() => { setData(ps => ps.filter(p => p.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+      {borrar && <ConfirmarBorrar titulo="pedido" onConfirmar={async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) return;
+
+  const { error } = await supabase
+    .from("pedidos")
+    .delete()
+    .eq("id", borrar.id)
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al borrar el pedido");
+    return;
+  }
+
+  setData(ps => ps.filter(p => p.id !== borrar.id));
+  setBorrar(null);
+}} onCancelar={() => setBorrar(null)} />}
     </>
   );
 }
@@ -1629,7 +1771,28 @@ const guardar = async (form) => {
       </div>
       <FAB label="+ Avisos " onClick={() => setModal("nuevo")} />
       {modal && <ModalRecordatorio rec={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
-      {borrar && <ConfirmarBorrar titulo="recordatorio" onConfirmar={() => { setData(rs => rs.filter(r => r.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+      {borrar && <ConfirmarBorrar titulo="recordatorio" onConfirmar={async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) return;
+
+  const { error } = await supabase
+    .from("recordatorios")
+    .delete()
+    .eq("id", borrar.id)
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al borrar el recordatorio");
+    return;
+  }
+
+  setData(rs => rs.filter(r => r.id !== borrar.id));
+  setBorrar(null);
+}} onCancelar={() => setBorrar(null)} />}
     </>
   );
 }

@@ -4,7 +4,8 @@ import { supabase } from "./supabaseClient";
 export default function DetalleProductoSimple({
   producto,
   onVolver,
-  onActualizar
+  onActualizar,
+  session
 }) {
   const [form, setForm] = useState({
     precioCompra: producto.precioCompra || 0,
