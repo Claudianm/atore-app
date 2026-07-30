@@ -831,7 +831,7 @@ function ModalPedido({ pedido, onGuardar, onCerrar }) {
     proveedor: "",
     fecha: hoy,
     estado: "Pendiente",
-    detalle: [],
+    productos: [],
     monto: 0
   }
 );
@@ -843,21 +843,13 @@ const agregarProducto = () => {
 
   if (!p) return;
 
-  set("detalle", [
-    ...form.detalle,
-    {
-      productoId: null,
-      nombre: p,
-      cantidad: 1,
-      costoUnitario: 0
-    }
-  ]);
+  set("productos", [...(form.productos || []), p]);
 
   setProdInput("");
 };
   const valido =
   form.proveedor.trim() &&
-  form.detalle.length > 0;
+  form.productos.length > 0;
   return (
     <ModalBase titulo={pedido ? "Editar pedido" : "Nuevo pedido"} onCerrar={onCerrar} onGuardar={() => onGuardar(form)} valido={valido} labelGuardar={pedido ? "Guardar cambios" : "Crear pedido"}>
       <Campo label="Proveedor"><input style={inputStyle} type="text" value={form.proveedor} placeholder="Ej: Distribuidora Norte" onChange={e => set("proveedor", e.target.value)} /></Campo>
@@ -867,7 +859,7 @@ const agregarProducto = () => {
       <Campo label="Productos">
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><input style={{ ...inputStyle, flex: 1 }} type="text" value={prodInput} placeholder="Ej: Arroz 1kg" onChange={e => setProdInput(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarProducto()} /><button onClick={agregarProducto} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "0 14px", fontSize: 16, cursor: "pointer" }}>+</button></div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-{form.detalle.map((item, i) => (
+{(form.productos || []).map((item, i) => (
   <div
     key={i}
     style={{
@@ -881,13 +873,13 @@ const agregarProducto = () => {
       marginBottom: 6
     }}
   >
-    <span>{item.nombre}</span>
+    <span>{item}</span>
 
     <button
       onClick={() =>
         set(
-          "detalle",
-          form.detalle.filter((_, index) => index !== i)
+          "productos",
+          form.productos.filter((_, index) => index !== i)
         )
       }
       style={{
@@ -902,12 +894,7 @@ const agregarProducto = () => {
   </div>
 ))}
 
-{form.detalle.length === 0 && (
-  <span style={{ fontSize: 12, color: "#888" }}>
-    Aún no has agregado productos
-  </span>
-)}
-{form.detalle.length === 0 && (
+{(form.productos || []).length === 0 && (
   <span style={{ fontSize: 12, color: "var(--color-text-secondary,#aaa)" }}>
     Aún no tienes productos agregados
   </span>
@@ -924,19 +911,46 @@ function Pedidos({ data, setData, session }) {
   const [expandido, setExpandido] = useState(null);
 const guardar = async (form) => {
   if (form.id) {
-    setData(ps =>
-      ps.map(p => p.id === form.id ? form : p)
-    );
-    setModal(null);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    alert("Sesión no encontrada");
     return;
   }
 
+  const { error } = await supabase
+    .from("pedidos")
+    .update({
+      proveedor: form.proveedor,
+      fecha: form.fecha,
+      estado: form.estado,
+      productos: form.productos || [],
+      monto: form.monto
+    })
+    .eq("id", form.id)
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al actualizar el pedido");
+    return;
+  }
+
+  setData(ps =>
+    ps.map(p => (p.id === form.id ? form : p))
+  );
+
+  setModal(null);
+  return;
+}
   const nuevoPedido = {
   user_id: session.user.id,
   proveedor: form.proveedor,
   fecha: form.fecha,
   estado: form.estado,
-  detalle: form.detalle || [],
+  productos: form.productos || [],
   monto: form.monto
 };
 
@@ -1338,7 +1352,7 @@ const { data, error } = await supabase
       user_id: session.user.id,
       fecha: hoy,
       producto,
-      marca: productoInv.tieneMarcas ? marca.marca : null,
+      marca: productoInv.tieneMarcas ? marcaSeleccionada : null,
       cantidad,
       costo_unitario: costoUnitario,
       precio_unitario: precioUnitario,
@@ -1356,7 +1370,7 @@ if (error) {
     setVentas(v => [...v, data]);
 await actualizarInventario(
   producto,
-  productoInv.tieneMarcas ? marca.marca : null,
+  productoInv.tieneMarcas ? marcaSeleccionada : null,
   cantidad
 );
     const nuevoInventario = inventario.map(p => {
@@ -1368,7 +1382,7 @@ await actualizarInventario(
     return {
       ...p,
       marcas: p.marcas.map(m =>
-        m.marca === marca.marca
+        m.marca === marcaSeleccionada
           ? {
               ...m,
               stock: m.stock - cantidad,
@@ -1932,7 +1946,35 @@ const costosInventario = inventario.reduce((total, producto) => {
         ))}
       </div>
       {modal && <ModalAjuste ajuste={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
-      {borrar && <ConfirmarBorrar titulo="ajuste" onConfirmar={() => { setAjustes(as => as.filter(a => a.id !== borrar.id)); setBorrar(null); }} onCancelar={() => setBorrar(null)} />}
+{borrar && (
+  <ConfirmarBorrar
+    titulo="ajuste"
+    onConfirmar={async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) return;
+
+      const { error } = await supabase
+        .from("ajustes_er")
+        .delete()
+        .eq("id", borrar.id)
+        .eq("user_id", session.user.id);
+
+      if (error) {
+        console.error(error);
+        alert("Error al borrar el ajuste");
+        return;
+      }
+
+      setAjustes(as => as.filter(a => a.id !== borrar.id));
+      setBorrar(null);
+    }}
+    onCancelar={() => setBorrar(null)}
+  />
+)}
+  
     </>
   );
 }
