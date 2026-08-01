@@ -15,6 +15,7 @@ import {
   ESTADO_ESTILOS,
   PRIORIDAD_ESTILOS
 } from "./constants";
+import { recibirPedido } from "./services/pedidosService";
 const supabase = createClient(
   "https://rstkjtuwvpdaowbqtspc.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzdGtqdHV3dnBkYW93YnF0c3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMzQ5NzYsImV4cCI6MjA5NDcxMDk3Nn0.qT_kQFGqkNs5i9duoVZure_fVP9XhLn54W0yRmSrYuE"
@@ -835,21 +836,46 @@ function ModalPedido({ pedido, onGuardar, onCerrar }) {
     monto: 0
   }
 );
-  const [prodInput, setProdInput] = useState("");
-  const [theme, setTheme] = useState("light")
+const [nuevoProducto, setNuevoProducto] = useState({
+  categoria: "Alimentos",
+  producto: "",
+  marca: "",
+  caracteristicas: "",
+  cantidad: 1,
+  precioCompra: 0,
+  precioVenta: 0
+});
+useEffect(() => {
+  if (pedido?.productos?.length > 0) {
+    setNuevoProducto(pedido.productos[0]);
+  }
+}, [pedido]);
+const [theme, setTheme] = useState("light")
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 const agregarProducto = () => {
-  const p = prodInput.trim();
+  if (!nuevoProducto.producto.trim()) return;
 
-  if (!p) return;
+  set("productos", [
+  ...(form.productos || []),
+    {
+      ...nuevoProducto,
+      stock: nuevoProducto.cantidad
+    }
+  ]);
 
-  set("productos", [...(form.productos || []), p]);
+  setNuevoProducto({
+  categoria: "Alimentos",
+  producto: "",
+  marca: "",
+  caracteristicas: "",
+  cantidad: 1,
+  precioCompra: 0,
+  precioVenta: 0
+});
 
-  setProdInput("");
-};
   const valido =
   form.proveedor.trim() &&
-  form.productos.length > 0;
+  (form.productos || []).length > 0;
   return (
     <ModalBase titulo={pedido ? "Editar pedido" : "Nuevo pedido"} onCerrar={onCerrar} onGuardar={() => onGuardar(form)} valido={valido} labelGuardar={pedido ? "Guardar cambios" : "Crear pedido"}>
       <Campo label="Proveedor"><input style={inputStyle} type="text" value={form.proveedor} placeholder="Ej: Distribuidora Norte" onChange={e => set("proveedor", e.target.value)} /></Campo>
@@ -857,8 +883,94 @@ const agregarProducto = () => {
       <Campo label="Fecha"><input style={inputStyle} type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)} /></Campo>
       <Campo label="Estado"><SelectorBotones opciones={ESTADOS_PEDIDO.filter(e => e !== "Todos")} activo={form.estado} onChange={v => set("estado", v)} /></Campo>
       <Campo label="Productos">
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><input style={{ ...inputStyle, flex: 1 }} type="text" value={prodInput} placeholder="Ej: Arroz 1kg" onChange={e => setProdInput(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarProducto()} /><button onClick={agregarProducto} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 8, padding: "0 14px", fontSize: 16, cursor: "pointer" }}>+</button></div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+     <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+
+  <select
+    style={inputStyle}
+    value={nuevoProducto.categoria}
+    onChange={e => setNuevoProducto({ ...nuevoProducto, categoria: e.target.value })}
+  >
+    {CATEGORIAS.slice(1).map(c => (
+      <option key={c} value={c}>{c}</option>
+    ))}
+  </select>
+
+  <input
+    style={inputStyle}
+    placeholder="Producto"
+    value={nuevoProducto.producto}
+    onChange={e => setNuevoProducto({ ...nuevoProducto, producto: e.target.value })}
+  />
+
+  <input
+  style={inputStyle}
+  placeholder="Marca"
+  value={nuevoProducto.marca}
+  onChange={e =>
+    setNuevoProducto({
+      ...nuevoProducto,
+      marca: e.target.value
+    })
+  }
+/>
+
+<Campo label="Características">
+  <input
+    style={inputStyle}
+    placeholder="Ej: 1,5 L retornable"
+    value={nuevoProducto.caracteristicas}
+    onChange={e =>
+      setNuevoProducto({
+        ...nuevoProducto,
+        caracteristicas: e.target.value
+      })
+    }
+  />
+</Campo>
+
+<Campo label="Precio compra ($)">
+  <input
+    style={inputStyle}
+    type="number"
+    value={nuevoProducto.precioCompra}
+    onChange={e =>
+      setNuevoProducto({
+        ...nuevoProducto,
+        precioCompra: Number(e.target.value)
+      })
+    }
+  />
+</Campo>
+
+<Campo label="Precio venta ($)">
+  <input
+    style={inputStyle}
+    type="number"
+    value={nuevoProducto.precioVenta}
+    onChange={e =>
+      setNuevoProducto({
+        ...nuevoProducto,
+        precioVenta: Number(e.target.value)
+      })
+    }
+  />
+</Campo>
+
+  <button
+    onClick={agregarProducto}
+    style={{
+      background: "#1a3a2a",
+      color: "white",
+      border: "none",
+      borderRadius: 8,
+      padding: "10px"
+    }}
+  >
+    + Agregar producto
+  </button>
+
+</div>
+     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
 {(form.productos || []).map((item, i) => (
   <div
     key={i}
@@ -873,8 +985,25 @@ const agregarProducto = () => {
       marginBottom: 6
     }}
   >
-    <span>{item}</span>
+<div style={{ display: "flex", flexDirection: "column" }}>
+  <strong>{item.producto}</strong>
 
+  <span style={{ fontSize: 12 }}>
+    Marca: {item.marca}
+  </span>
+
+  <span style={{ fontSize: 12 }}>
+    Características: {item.caracteristicas || "-"}
+  </span>
+
+  <span style={{ fontSize: 12 }}>
+    Cantidad: {item.cantidad}
+  </span>
+
+  <span style={{ fontSize: 12 }}>
+    Compra: ${item.precioCompra} | Venta: ${item.precioVenta}
+  </span>
+</div>
     <button
       onClick={() =>
         set(
@@ -904,6 +1033,7 @@ const agregarProducto = () => {
     </ModalBase>
   );
 }
+
 function Pedidos({ data, setData, session }) {
   const [filtro, setFiltro] = useState("Todos");
   const [modal, setModal] = useState(null);
@@ -1026,7 +1156,38 @@ const guardar = async (form) => {
             {p.estado !== "Recibido" && p.estado !== "Cancelado" && (
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 {p.estado === "Pendiente" && <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, estado: "En camino" } : x))} style={{ flex: 1, padding: "7px", background: "#e6f1fb", color: "#185fa5", border: "0.5px solid #b3d0f0", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>🚚 En camino</button>}
-                {p.estado === "En camino" && <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, estado: "Recibido" } : x))} style={{ flex: 1, padding: "7px", background: "#eaf3de", color: "#3b6d11", border: "0.5px solid #b8dda0", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>✓ Recibido</button>}
+                {p.estado === "En camino" && (
+  <button
+    onClick={async () => {
+      try {
+        await recibirPedido(p, session);
+
+        setData(ps =>
+          ps.map(x =>
+            x.id === p.id
+              ? { ...x, estado: "Recibido" }
+              : x
+          )
+        );
+      } catch (err) {
+        console.error(err);
+        alert("Error al recibir el pedido.");
+      }
+    }}
+    style={{
+      flex: 1,
+      padding: "7px",
+      background: "#eaf3de",
+      color: "#3b6d11",
+      border: "0.5px solid #b8dda0",
+      borderRadius: 8,
+      fontSize: 12,
+      cursor: "pointer"
+    }}
+  >
+    ✓ Recibido
+  </button>
+)}
                 <button onClick={() => setData(ps => ps.map(x => x.id === p.id ? { ...x, estado: "Cancelado" } : x))} style={{ padding: "7px 10px", background: "#f0f0f0", color: "#888", border: "0.5px solid #ddd", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>Cancelar</button>
               </div>
             )}
@@ -2187,6 +2348,7 @@ function CambiarClave() {
     </div>
   );
 }
+
 export default function AlmacenApp() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
