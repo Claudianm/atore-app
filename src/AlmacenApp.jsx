@@ -845,6 +845,7 @@ const [nuevoProducto, setNuevoProducto] = useState({
   precioCompra: 0,
   precioVenta: 0
 });
+const [indiceEditando, setIndiceEditando] = useState(null);
 useEffect(() => {
   if (pedido?.productos?.length > 0) {
     setNuevoProducto(pedido.productos[0]);
@@ -855,24 +856,33 @@ const [theme, setTheme] = useState("light")
 const agregarProducto = () => {
   if (!nuevoProducto.producto.trim()) return;
 
-  set("productos", [
-  ...(form.productos || []),
-    {
-      ...nuevoProducto,
-      stock: nuevoProducto.cantidad
-    }
-  ]);
+  const producto = {
+    ...nuevoProducto,
+    stock: nuevoProducto.cantidad
+  };
+
+  if (indiceEditando !== null) {
+    const productos = [...(form.productos || [])];
+    productos[indiceEditando] = producto;
+    set("productos", productos);
+    setIndiceEditando(null);
+  } else {
+    set("productos", [
+      ...(form.productos || []),
+      producto
+    ]);
+  }
 
   setNuevoProducto({
-  categoria: "Alimentos",
-  producto: "",
-  marca: "",
-  caracteristicas: "",
-  cantidad: 1,
-  precioCompra: 0,
-  precioVenta: 0
-});
-
+    categoria: "Alimentos",
+    producto: "",
+    marca: "",
+    caracteristicas: "",
+    cantidad: 1,
+    precioCompra: 0,
+    precioVenta: 0
+  });
+};
   const valido =
   form.proveedor.trim() &&
   (form.productos || []).length > 0;
@@ -927,6 +937,20 @@ const agregarProducto = () => {
     }
   />
 </Campo>
+<Campo label="Cantidad">
+  <input
+    style={inputStyle}
+    type="number"
+    min="1"
+    value={nuevoProducto.cantidad}
+    onChange={e =>
+      setNuevoProducto({
+        ...nuevoProducto,
+        cantidad: Number(e.target.value)
+      })
+    }
+  />
+</Campo>
 
 <Campo label="Precio compra ($)">
   <input
@@ -966,7 +990,9 @@ const agregarProducto = () => {
       padding: "10px"
     }}
   >
-    + Agregar producto
+   {indiceEditando !== null
+  ? "💾 Guardar cambios"
+  : "+ Agregar producto"}
   </button>
 
 </div>
@@ -1004,6 +1030,21 @@ const agregarProducto = () => {
     Compra: ${item.precioCompra} | Venta: ${item.precioVenta}
   </span>
 </div>
+<button
+  onClick={() => {
+    setNuevoProducto(item);
+    setIndiceEditando(i);
+  }}
+  style={{
+    background: "none",
+    border: "none",
+    color: "#185fa5",
+    cursor: "pointer",
+    marginRight: 8
+  }}
+>
+  ✏️
+</button>
     <button
       onClick={() =>
         set(
@@ -1140,18 +1181,21 @@ const guardar = async (form) => {
             <button onClick={() => setExpandido(expandido === p.id ? null : p.id)} style={{ background: "none", border: "none", fontSize: 12, color: "var(--color-text-secondary,#888)", cursor: "pointer", padding: "6px 0 0", display: "block" }}>{expandido === p.id ? "▲ Ocultar" : "▼ Ver productos"}</button>
             {expandido === p.id && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{(p.detalle || p.productos || []).map((item, i) => (
   <span
-    key={item.nombre || item || i}
-    style={{
-      background: "var(--color-background-secondary,#f5f4f0)",
-      border: "0.5px solid var(--color-border-tertiary,#ddd)",
-      borderRadius: 6,
-      padding: "3px 8px",
-      fontSize: 11,
-      color: "var(--color-text-secondary,#666)"
-    }}
-  >
-    {item.nombre || item}
-  </span>
+  key={i}
+  style={{
+    background: "var(--color-background-secondary,#f5f4f0)",
+    border: "0.5px solid var(--color-border-tertiary,#ddd)",
+    borderRadius: 6,
+    padding: "3px 8px",
+    fontSize: 11,
+    color: "var(--color-text-secondary,#666)"
+  }}
+>
+  {typeof item === "object"
+    ? `${item.producto} - ${item.marca} | Cant: ${item.cantidad}`
+    : item}
+</span>
+
 ))}</div>}
             {p.estado !== "Recibido" && p.estado !== "Cancelado" && (
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
