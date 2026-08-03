@@ -1075,7 +1075,7 @@ const agregarProducto = () => {
   );
 }
 
-function Pedidos({ data, setData, session }) {
+function Pedidos({ data, setData, session, cargarInventario }) {
   const [filtro, setFiltro] = useState("Todos");
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
@@ -1205,6 +1205,7 @@ const guardar = async (form) => {
     onClick={async () => {
       try {
         await recibirPedido(p, session);
+        await cargarInventario();
 
         setData(ps =>
           ps.map(x =>
@@ -2203,7 +2204,21 @@ const [tab, setTab] = useState("inventario");
     return;
   }
 
-  setInventario(data || []);
+  setInventario(
+  (data || []).map(p => ({
+    ...p,
+    marcas: [
+      {
+        marca: p.marcas,
+        stock: p.stock,
+        minimo: p.minimo,
+        precioCompra: p.precioCompra,
+        precioVenta: p.precioVenta,
+        tipoVenta: p.tipoVenta
+      }
+    ]
+  }))
+);
 };
 const cargarPagos = async () => {
   const { data, error } = await supabase
@@ -2308,10 +2323,11 @@ const cerrarSesion = async () => {
 {tab === "pagos"      && <Pagos      data={pagos}      setData={setPagos} session={session} />}
 {tab === "pedidos" && (
   <Pedidos
-    data={pedidos}
-    setData={setPedidos}
-    session={session}
-  />
+  data={pedidos}
+  setData={setPedidos}
+  session={session}
+  cargarInventario={cargarInventario}
+/>
 )}
 {tab === "avisos" && (
   <Recordatorios

@@ -28,36 +28,74 @@ export async function recibirPedido(pedido, session) {
   for (const prod of (pedido.productos || [])) {
 
     const existente = inventario.find(
-      p =>
-        p.producto === prod.producto &&
-        p.marca === prod.marca
-    );
+  p => p.nombre === prod.producto
+);
 
-    if (existente) {
-      // Aumentar stock
-      await supabase
-        .from("inventario")
-        .update({
-          stock: Number(existente.stock) + Number(prod.cantidad)
-        })
-        .eq("id", existente.id);
+    let inventarioId;
 
-    } else {
-      // Crear producto nuevo
-      await supabase
-        .from("inventario")
-        .insert({
-          user_id: session.user.id,
-          categoria: prod.categoria,
-          producto: prod.producto,
-          marca: prod.marca,
-          caracteristicas: prod.caracteristicas,
-          stock: prod.cantidad,
-          precioCompra: prod.precioCompra,
-          precioVenta: prod.precioVenta
-        });
-    }
-  }
+if (existente) {
+
+  inventarioId = existente.id;
+
+} else {
+
+  const { data: nuevoProducto, error } = await supabase
+    .from("inventario")
+    .insert({
+      user_id: session.user.id,
+      nombre: prod.producto,
+      categoria: prod.categoria,
+      tieneMarcas: !!prod.marca
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  inventarioId = nuevoProducto.id;
+
+}
+// Buscar si ya existe la marca
+const { data: marcaExistente } = await supabase
+  .from("inventario_marcas")
+  .select("*")
+  .eq("inventario_id", inventarioId)
+  .eq("marca", prod.marca)
+  .single();
+
+if (marcaExistente) {
+
+  const { error } = await supabase
+    .from("inventario_marcas")
+    .update({
+      stock: Number(marcaExistente.stock) + Number(prod.cantidad),
+      precioCompra: prod.precioCompra,
+      precioVenta: prod.precioVenta
+    })
+    .eq("id", marcaExistente.id);
+
+  if (error) throw error;
+
+} else {
+
+  const { error } = await supabase
+    .from("inventario_marcas")
+    .insert({
+      inventario_id: inventarioId,
+      user_id: session.user.id,
+      marca: prod.marca,
+      caracteristicas: prod.caracteristicas,
+      stock: prod.cantidad,
+      minimo: 0,
+      precioCompra: prod.precioCompra,
+      precioVenta: prod.precioVenta,
+      tipoVenta: "Unidad"
+    });
+
+  if (error) throw error;
+} 
+}
+  
 
   return true;
 }
