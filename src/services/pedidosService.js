@@ -53,15 +53,32 @@ if (existente) {
   if (error) throw error;
 
   inventarioId = nuevoProducto.id;
+const { error: errorMarca } = await supabase
+  .from("inventario_marcas")
+  .insert({
+    inventario_id: inventarioId,
+    user_id: session.user.id,
+    marca: prod.marca,
+    stock: Number(prod.cantidad),
+    minimo: 0,
+    precioCompra: Number(prod.precioCompra),
+    precioVenta: Number(prod.precioVenta),
+    tipoVenta: "Unidad",
+    caracteristicas: prod.caracteristicas || ""
+  });
 
+if (errorMarca) throw errorMarca;
 }
 // Buscar si ya existe la marca
-const { data: marcaExistente } = await supabase
+const { data: marcas, error } = await supabase
   .from("inventario_marcas")
   .select("*")
   .eq("inventario_id", inventarioId)
-  .eq("marca", prod.marca)
-  .single();
+  .eq("marca", prod.marca);
+
+if (error) throw error;
+
+const marcaExistente = marcas.length > 0 ? marcas[0] : null;
 
 if (marcaExistente) {
 
@@ -81,16 +98,13 @@ if (marcaExistente) {
   const { error } = await supabase
     .from("inventario_marcas")
     .insert({
-      inventario_id: inventarioId,
-      user_id: session.user.id,
-      marca: prod.marca,
-      caracteristicas: prod.caracteristicas,
-      stock: prod.cantidad,
-      minimo: 0,
-      precioCompra: prod.precioCompra,
-      precioVenta: prod.precioVenta,
-      tipoVenta: "Unidad"
-    });
+  user_id: session.user.id,
+  nombre: prod.producto,
+  categoria: prod.categoria,
+  tieneMarcas: true
+})
+.select()
+.single();
 
   if (error) throw error;
 } 

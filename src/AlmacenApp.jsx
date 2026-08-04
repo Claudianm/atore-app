@@ -45,19 +45,16 @@ function margenColor(pct) {
   return "#d85a30";
 }
 function stockTotal(p) {
-  if (!p.tieneMarcas) {
-    return p.stock || 0;
-  }
+  console.log("stockTotal recibe:", p);
 
-  return (p.marcas || []).reduce((a, m) => a + m.stock, 0);
+  const marcas = Array.isArray(p.marcas) ? p.marcas : [];
+  return marcas.reduce((a, m) => a + Number(m.stock || 0), 0);
 }
 
-function minimoTotal(p) {
-  if (!p.tieneMarcas) {
-    return p.minimo || 0;
-  }
 
-  return (p.marcas || []).reduce((a, m) => a + m.minimo, 0);
+function minimoTotal(p) {
+  const marcas = Array.isArray(p.marcas) ? p.marcas : [];
+  return marcas.reduce((a, m) => a + Number(m.minimo || 0), 0);
 }
 function estadoStock(stock, minimo) { return stock === 0 ? "sin" : stock < minimo ? "poco" : "ok"; }
 const badgeStock = {
@@ -190,10 +187,6 @@ const [modalMarca, setModalMarca] = useState(null);
   const [vista, setVista] = useState("stock");
 
 const guardarMarca = async (form) => {
-  const marcas = form.id
-    ? producto.marcas.map(m => (m.id === form.id ? form : m))
-    : [...producto.marcas, { ...form, id: Date.now() }];
-
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -203,41 +196,78 @@ const guardarMarca = async (form) => {
     return;
   }
 
-  const { error } = await supabase
-    .from("inventario")
-    .update({ marcas })
-    .eq("id", producto.id)
-    .eq("user_id", session.user.id);
+  let error;
+
+  if (form.id) {
+    // Editar una marca existente
+    ({ error } = await supabase
+      .from("inventario_marcas")
+      .update({
+        marca: form.marca,
+        stock: form.stock,
+        minimo: form.minimo,
+        precioCompra: form.precioCompra,
+        precioVenta: form.precioVenta,
+        tipoVenta: form.tipoVenta,
+        caracteristicas: form.caracteristicas
+      })
+      .eq("id", form.id)
+      .eq("user_id", session.user.id));
+  } else {
+    // Crear una marca nueva
+    ({ error } = await supabase
+      .from("inventario_marcas")
+      .insert({
+        inventario_id: producto.id,
+        user_id: session.user.id,
+        marca: form.marca,
+        stock: form.stock,
+        minimo: form.minimo,
+        precioCompra: form.precioCompra,
+        precioVenta: form.precioVenta,
+        tipoVenta: form.tipoVenta,
+        caracteristicas: form.caracteristicas
+      }));
+  }
 
   if (error) {
     console.error(error);
-    alert("Error al guardar marca");
+    alert("Error al guardar la marca");
     return;
   }
 
-  onActualizar({ ...producto, marcas });
-  setModalMarca(null);
+ window.location.reload();
 };
-const totalVendidos = (producto.marcas || []).reduce(
-  (a, m) => a + (m.vendidos || 0),
+
+const marcas = Array.isArray(producto.marcas) ? producto.marcas : [];
+
+const totalVendidos = marcas.reduce(
+  (a, m) => a + (Number(m.vendidos) || 0),
   0
 );
-const marcas = producto.marcas || [];
 
-const margenProm = marcas.length > 0
-  ? Math.round(
-      marcas.reduce((a, m) => a + margenPct(m), 0) / marcas.length
-    )
-  : 0;
-const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.vendidos || 0))[0];
-  const mayorMargen = [...producto.marcas].sort((a, b) => margenPct(b) - margenPct(a))[0];
+const margenProm =
+  marcas.length > 0
+    ? Math.round(
+        marcas.reduce((a, m) => a + margenPct(m), 0) / marcas.length
+      )
+    : 0;
 
+const mejorMarca =
+  [...marcas].sort(
+    (a, b) => (Number(b.vendidos) || 0) - (Number(a.vendidos) || 0)
+  )[0];
+
+const mayorMargen =
+  [...marcas].sort(
+    (a, b) => margenPct(b) - margenPct(a)
+  )[0];
   return (
     <div>
       <div style={{ background: "#1a3a2a", padding: "16px 16px 14px" }}>
         <button onClick={onVolver} style={{ background: "none", border: "none", color: "#7fbb95", fontSize: 13, cursor: "pointer", padding: 0, marginBottom: 8 }}>← Volver</button>
         <div style={{ color: "#e8f5ee", fontSize: 20, fontWeight: 500 }}>{producto.nombre}</div>
-        <div style={{ color: "#7fbb95", fontSize: 12, marginBottom: 12 }}>{producto.categoria} · {producto.marcas.length} marcas</div>
+        <div style={{ color: "#7fbb95", fontSize: 12, marginBottom: 12 }}>{producto.categoria} · {marcas.length} marcas</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           {[{ v: stockTotal(producto), c: "#e8f5ee", l: "Stock total" }, { v: totalVendidos, c: "#7febb8", l: "Vendidos" }, { v: margenProm + "%", c: margenColor(margenProm), l: "Margen prom." }].map(x => (
             <div key={x.l} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 15, fontWeight: 500, color: x.c }}>{x.v}</div><div style={{ fontSize: 10, color: "#7fbb95" }}>{x.l}</div></div>
@@ -255,8 +285,8 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
         {vista === "stock" && (
           producto.tieneMarcas ? (
             <>
-              {producto.marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas. Agrega la primera.</div>}
-              {producto.marcas.map(m => {
+              {marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas. Agrega la primera.</div>}
+              {marcas.map(m => {
                 const est = estadoStock(m.stock, m.minimo);
                 const b = badgeStock[est];
               const mg = margenPct(m);
@@ -309,8 +339,8 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
 
         {vista === "analisis" && (
           <>
-            {producto.marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas para analizar.</div>}
-            {producto.marcas.length > 0 && (
+            {marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas para analizar.</div>}
+            {marcas.length > 0 && (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
                   <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid #b8dda0", borderLeft: "3px solid #1d9e75", borderRadius: 10, padding: "10px 12px" }}>
@@ -327,8 +357,8 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
 
                 <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "14px", marginBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary,#888)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Ranking de ventas</div>
-                  {[...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.vendidos || 0)).map((m, i) => {
-                    const maxV = Math.max(...producto.marcas.map(x => x.vendidos || 0));
+                  {[...marcas].sort((a, b) => (b.vendidos || 0) - (a.vendidos || 0)).map((m, i) => {
+                    const maxV = Math.max(...marcas.map(x => x.vendidos || 0));
                     const pct = maxV > 0 ? Math.round(((m.vendidos || 0) / maxV) * 100) : 0;
                     return (
                       <div key={m.id} style={{ marginBottom: 10 }}>
@@ -341,7 +371,7 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
 
                 <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary,#888)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Margen por marca</div>
-                  {[...producto.marcas].sort((a, b) => margenPct(b) - margenPct(a)).map(m => {
+                  {[...marcas].sort((a, b) => margenPct(b) - margenPct(a)).map(m => {
                     const mg = margenPct(m);
                     return (
                       <div key={m.id} style={{ marginBottom: 10 }}>
@@ -370,7 +400,7 @@ const mejorMarca  = [...producto.marcas].sort((a, b) => (b.vendidos || 0) - (a.v
     theme={theme}
   />
 )}
-      {borrarMarca && <ConfirmarBorrar titulo="marca" onConfirmar={() => { onActualizar({ ...producto, marcas: producto.marcas.filter(m => m.id !== borrarMarca.id) }); setBorrarMarca(null); }} onCancelar={() => setBorrarMarca(null)} />}
+      {borrarMarca && <ConfirmarBorrar titulo="marca" onConfirmar={() => { onActualizar({ ...producto, marcas: marcas.filter(m => m.id !== borrarMarca.id) }); setBorrarMarca(null); }} onCancelar={() => setBorrarMarca(null)} />}
     </div>
   );
 }
@@ -619,8 +649,15 @@ const filtrados = data.filter(
     (p.nombre || "").toLowerCase().includes((busqueda || "").toLowerCase()) &&
     (categoria === "Todos" || p.categoria === categoria)
 );
-  const sinStock = data.filter(p => p.marcas.some(m => m.stock === 0)).length;
-  const pocoStock = data.filter(p => p.marcas.some(m => m.stock > 0 && m.stock < m.minimo)).length;
+const sinStock = data.filter(
+  p => (Array.isArray(p.marcas) ? p.marcas : []).some(m => Number(m.stock) === 0)
+).length;
+
+const pocoStock = data.filter(
+  p => (Array.isArray(p.marcas) ? p.marcas : []).some(
+    m => Number(m.stock) > 0 && Number(m.stock) < Number(m.minimo)
+  )
+).length;
 
   return (
     <>
@@ -649,16 +686,15 @@ const filtrados = data.filter(
           const est = estadoStock(st, mn); const b = badgeStock[est];
           const pct = mn > 0 ? Math.min(100, Math.round((st / (mn * 4)) * 100)) : 0;
           const barColor = est === "sin" ? "#e24b4a" : est === "poco" ? "#ef9f27" : "#1d9e75";
-const marcas = p.marcas || [];
-
+          const marcas = Array.isArray(p.marcas) ? p.marcas : [];
         const mp =
   marcas.length > 0
     ? Math.round(
         marcas.reduce((a, m) => a + margenPct(m), 0) / marcas.length
       )
     : null;
-          const tv = p.marcas.reduce((a, m) => a + (m.vendidos || 0), 0);
-          return (
+const tv = marcas.reduce((a, m) => a + (Number(m.vendidos) || 0), 0);
+    return (
             <div key={p.id} onClick={() => setDetalle(p)} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "pointer" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
@@ -802,25 +838,39 @@ const marcas = p.marcas || [];
       )}
 {borrar && (
   <ConfirmarBorrar
-    titulo="producto"
-    onConfirmar={async () => {
-      if (!session) return;
-      const { error } = await supabase
-  .from("inventario")
-  .delete()
-  .eq("id", borrar.id)
-  .eq("user_id", session.user.id);
+  titulo="producto"
+  onConfirmar={async () => {
+    if (!session) return;
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
+    // 1. Borrar todas las marcas del producto
+    const { error: errorMarcas } = await supabase
+      .from("inventario_marcas")
+      .delete()
+      .eq("inventario_id", borrar.id)
+      .eq("user_id", session.user.id);
 
-      setData(ps => ps.filter(p => p.id !== borrar.id));
-      setBorrar(null);
-    }}
-    onCancelar={() => setBorrar(null)}
-  />
+    if (errorMarcas) {
+      alert(errorMarcas.message);
+      return;
+    }
+
+    // 2. Borrar el producto
+    const { error } = await supabase
+      .from("inventario")
+      .delete()
+      .eq("id", borrar.id)
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setData(ps => ps.filter(p => p.id !== borrar.id));
+    setBorrar(null);
+  }}
+  onCancelar={() => setBorrar(null)}
+/>
 )}
     </>
   );
@@ -1587,7 +1637,7 @@ await actualizarInventario(
 
     return {
       ...p,
-      marcas: p.marcas.map(m =>
+      marcas: marcas.map(m =>
         m.marca === marcaSeleccionada
           ? {
               ...m,
@@ -2083,13 +2133,13 @@ const guardar = async (form) => {
   const ingresosAj = ajustes.filter(a => a.categoria === "ingreso").reduce((a, x) => a + x.monto, 0);
   const gastosAj   = ajustes.filter(a => a.categoria === "gasto").reduce((a, x) => a + x.monto, 0);
   const ventasInventario = inventario.reduce((total, producto) => {
-  return total + (producto.marcas || []).reduce((suma, marca) => {
+  return total + (marcas || []).reduce((suma, marca) => {
     return suma + ((marca.precioVenta || 0) * (marca.vendidos || 0));
   }, 0);
 }, 0);
 
 const costosInventario = inventario.reduce((total, producto) => {
-  return total + (producto.marcas || []).reduce((suma, marca) => {
+  return total + (marcas || []).reduce((suma, marca) => {
     return suma + ((marca.precioCompra || 0) * (marca.vendidos || 0));
   }, 0);
 }, 0);
@@ -2204,19 +2254,67 @@ const [tab, setTab] = useState("inventario");
     return;
   }
 
-  setInventario(
+  // Cargar marcas
+const { data: marcas, error: errorMarcas } = await supabase
+  .from("inventario_marcas")
+  .select("*")
+  .eq("user_id", session.user.id);
+
+if (errorMarcas) {
+  console.error("Error cargando marcas:", errorMarcas);
+  return;
+}
+// Migrar automáticamente productos antiguos
+for (const p of data || []) {
+  const tieneMarca = marcas.some(m => m.inventario_id === p.id);
+
+  // Ignorar registros que ya fueron migrados
+  if (tieneMarca || p.stock == null) continue;
+
+  // Si el campo "marcas" contiene un JSON antiguo, no usarlo
+  let nombreMarca = "Sin marca";
+
+  if (typeof p.marcas === "string") {
+    if (!p.marcas.trim().startsWith("[")) {
+      nombreMarca = p.marcas;
+    }
+  }
+
+  const { data: nuevaMarca, error: errorInsert } = await supabase
+    .from("inventario_marcas")
+    .insert({
+      inventario_id: p.id,
+      user_id: p.user_id,
+      marca: nombreMarca,
+      stock: p.stock,
+      minimo: p.minimo || 0,
+      precioCompra: p.precioCompra,
+      precioVenta: p.precioVenta,
+      tipoVenta: p.tipoVenta || "Unidad",
+      caracteristicas: ""
+    });
+
+  if (errorInsert) {
+    console.error("Error migrando:", p.nombre, errorInsert);
+  } else {
+    marcas.push({
+      inventario_id: p.id,
+      marca: nombreMarca,
+      stock: p.stock,
+      minimo: p.minimo || 0,
+      precioCompra: p.precioCompra,
+      precioVenta: p.precioVenta,
+      tipoVenta: p.tipoVenta || "Unidad",
+      caracteristicas: ""
+    });
+  }
+}
+console.log("Inventario:", data);
+console.log("Inventario_marcas:", marcas);
+setInventario(
   (data || []).map(p => ({
     ...p,
-    marcas: [
-      {
-        marca: p.marcas,
-        stock: p.stock,
-        minimo: p.minimo,
-        precioCompra: p.precioCompra,
-        precioVenta: p.precioVenta,
-        tipoVenta: p.tipoVenta
-      }
-    ]
+    marcas: marcas.filter(m => m.inventario_id === p.id)
   }))
 );
 };
@@ -2285,8 +2383,13 @@ useEffect(() => {
   useEffect(() => { try { localStorage.setItem("rec_v4", JSON.stringify(recs)); } catch {} }, [recs]);
   useEffect(() => { try { localStorage.setItem("aj_v4",  JSON.stringify(ajustes)); } catch {} }, [ajustes]);
 
-  const alertas = inventario.filter(p => p.marcas.some(m => m.stock < m.minimo)).length + recs.filter(r => !r.completado && diasRestantes(r.fecha) <= 2).length;
-
+const alertas =
+  inventario.filter(
+    p => (Array.isArray(p.marcas) ? p.marcas : []).some(
+      m => m.stock < m.minimo
+    )
+  ).length +
+  recs.filter(r => !r.completado && diasRestantes(r.fecha) <= 2).length;
   const tabs = [
     { key: "inventario", label: "Stock",   icon: "📦" },
     { key: "ventas", label: "Ventas", icon: "🧾" },
