@@ -28,7 +28,8 @@ export async function recibirPedido(pedido, session) {
   for (const prod of (pedido.productos || [])) {
 
     const existente = inventario.find(
-  p => p.nombre === prod.producto
+  p => p.nombre.trim().toLowerCase() ===
+       prod.producto.trim().toLowerCase()
 );
 
     let inventarioId;
@@ -93,21 +94,24 @@ if (marcaExistente) {
 
   if (error) throw error;
 
-} else {
-
+} 
+else {
   const { error } = await supabase
     .from("inventario_marcas")
     .insert({
-  user_id: session.user.id,
-  nombre: prod.producto,
-  categoria: prod.categoria,
-  tieneMarcas: true
-})
-.select()
-.single();
+      inventario_id: inventarioId,
+      user_id: session.user.id,
+      marca: prod.marca,
+      stock: Number(prod.cantidad),
+      minimo: 0,
+      precioCompra: Number(prod.precioCompra),
+      precioVenta: Number(prod.precioVenta),
+      tipoVenta: "Unidad",
+      caracteristicas: prod.caracteristicas || ""
+    });
 
   if (error) throw error;
-} 
+}
 }
   
 

@@ -173,9 +173,22 @@ const [form, setForm] = useState(
             Margen estimado: <strong style={{ color: margenColor(margenPct(form)) }}>{margenPct(form)}%</strong>
           </div>
         )}
-        <button onClick={() => valido && onGuardar(form)} style={{ width: "100%", padding: "13px", background: valido ? "#1a3a2a" : "#ccc", color: "white", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 500, cursor: valido ? "pointer" : "not-allowed" }}>
-          {marca ? "Guardar cambios" : "Agregar marca"}
-        </button>
+        <button
+  onClick={() => valido && onGuardar(form)}
+  style={{
+    width: "100%",
+    padding: "13px",
+    background: valido ? "#1a3a2a" : "#ccc",
+    color: "white",
+    border: "none",
+    borderRadius: 10,
+    fontSize: 15,
+    fontWeight: 500,
+    cursor: valido ? "pointer" : "not-allowed"
+  }}
+>
+  {marca ? "Guardar cambios" : "Agregar marca"}
+</button>
       </div>
     </div>
   );
@@ -195,7 +208,7 @@ const guardarMarca = async (form) => {
     alert("Sesión no encontrada");
     return;
   }
-
+console.log(form);
   let error;
 
   if (form.id) {
@@ -231,12 +244,19 @@ const guardarMarca = async (form) => {
   }
 
   if (error) {
-    console.error(error);
-    alert("Error al guardar la marca");
-    return;
-  }
+  console.error(error);
+  alert("Error al guardar la marca");
+  return;
+}
 
- window.location.reload();
+const { data: prueba } = await supabase
+  .from("inventario_marcas")
+  .select("caracteristicas")
+  .eq("id", form.id)
+  .single();
+
+
+window.location.reload();
 };
 
 const marcas = Array.isArray(producto.marcas) ? producto.marcas : [];
@@ -2269,6 +2289,13 @@ for (const p of data || []) {
   const tieneMarca = marcas.some(m => m.inventario_id === p.id);
 
   // Ignorar registros que ya fueron migrados
+  console.log(
+  p.nombre,
+  "tieneMarca:",
+  tieneMarca,
+  "stock:",
+  p.stock
+);
   if (tieneMarca || p.stock == null) continue;
 
   // Si el campo "marcas" contiene un JSON antiguo, no usarlo
@@ -2311,12 +2338,14 @@ for (const p of data || []) {
 }
 console.log("Inventario:", data);
 console.log("Inventario_marcas:", marcas);
-setInventario(
-  (data || []).map(p => ({
-    ...p,
-    marcas: marcas.filter(m => m.inventario_id === p.id)
-  }))
-);
+const inventarioCompleto = (data || []).map(p => ({
+  ...p,
+  marcas: marcas.filter(m => m.inventario_id === p.id)
+}));
+
+console.log(inventarioCompleto);
+
+setInventario(inventarioCompleto);
 };
 const cargarPagos = async () => {
   const { data, error } = await supabase
