@@ -7,16 +7,20 @@ export async function recibirPedido(pedido, session) {
     throw new Error("No hay sesión.");
   }
 
-  // 1. Marcar pedido como recibido
-  const { error } = await supabase
+  // =====================================================
+  // 1. MARCAR PEDIDO COMO RECIBIDO
+  // =====================================================
+  const { error: errorPedido } = await supabase
     .from("pedidos")
     .update({ estado: "Recibido" })
     .eq("id", pedido.id)
     .eq("user_id", session.user.id);
 
-  if (error) throw error;
+  if (errorPedido) throw errorPedido;
 
-  // 2. Obtener inventario actual
+  // =====================================================
+  // 2. OBTENER INVENTARIO ACTUAL
+  // =====================================================
   const { data: inventario, error: errorInventario } = await supabase
     .from("inventario")
     .select("*")
@@ -24,96 +28,228 @@ export async function recibirPedido(pedido, session) {
 
   if (errorInventario) throw errorInventario;
 
-  // 3. Recorrer productos del pedido
-  for (const prod of (pedido.productos || [])) {
+  // =====================================================
+  // 3. PROCESAR CADA PRODUCTO DEL PEDIDO
+  // =====================================================
+  for (const prod of pedido.productos || []) {
+    const nombreProducto = (prod.producto || "").trim();
+    const nombreMarca = (prod.marca || "").trim();
 
-    const existente = inventario.find(
-  p => p.nombre.trim().toLowerCase() ===
-       prod.producto.trim().toLowerCase()
-);
+    if (!nombreProducto || !nombreMarca) {
+      console.warn("Producto o marca incompletos:", prod);
+      continue;
+    }
+
+    // ===================================================
+    // BUSCAR PRODUCTO
+    // ===================================================
+    let productoExistente = inventario.find(
+      p =>
+        (p.nombre || "").trim().toLowerCase() ===
+        nombreProducto.toLowerCase()
+    );
 
     let inventarioId;
 
-if (existente) {
+    // ===================================================
+    // CREAR PRODUCTO SI NO EXISTE
+    // ===================================================
+    if (!productoExistente) {
+      const { data: nuevoProducto, error: errorNuevoProducto } =
+        await supabase
+          .from("inventario")
+          .insert({
+            user_id: session.user.id,
+            nombre: nombreProducto,
+            categoria: prod.categoria || "",
+            tieneMarcas: true
+          })
+          .select()
+          .single();
 
-  inventarioId = existente.id;
+      if (errorNuevoProducto) throw errorNuevoProducto;
 
-} else {
+      inventarioId = nuevoProducto.id;
 
-  const { data: nuevoProducto, error } = await supabase
-    .from("inventario")
-    .insert({
-      user_id: session.user.id,
-      nombre: prod.producto,
-      categoria: prod.categoria,
-      tieneMarcas: !!prod.marca
-    })
-    .select()
-    .single();
+      // Lo agregamos al array para que otros productos del
+      // mismo pedido puedan encontrarlo.
+      inventario.push(nuevoProducto);
 
-  if (error) throw error;
+      productoExistente = nuevoProducto;
+    } else {
+      inventarioId = productoExistente.id;
+    }
 
-  inventarioId = nuevoProducto.id;
-const { error: errorMarca } = await supabase
-  .from("inventario_marcas")
-  .insert({
-    inventario_id: inventarioId,
-    user_id: session.user.id,
-    marca: prod.marca,
-    stock: Number(prod.cantidad),
-    minimo: 0,
-    precioCompra: Number(prod.precioCompra),
-    precioVenta: Number(prod.precioVenta),
-    tipoVenta: "Unidad",
-    caracteristicas: prod.caracteristicas || ""
-  });
+    // ===================================================
+    // BUSCAR MARCA
+    // ===================================================
+    const { data: marcas, error: errorMarcas } = await supabase
+      .from("inventario_marcas")
+      .select("*")
+      .eq("inventario_id", inventarioId)
+      .eq("user_id", session.user.id);
 
-if (errorMarca) throw errorMarca;
-}
-// Buscar si ya existe la marca
-const { data: marcas, error } = await supabase
-  .from("inventario_marcas")
-  .select("*")
-  .eq("inventario_id", inventarioId)
-  .eq("marca", prod.marca);
+    if (errorMarcas) throw errorMarcas;
 
-if (error) throw error;
+    const marcaExistente = (marcas || []).find(
+      m =>
+        (m.marca || "").trim().toLowerCase() ===
+        nombreMarca.toLowerCase()
+    );
 
-const marcaExistente = marcas.length > 0 ? marcas[0] : null;
+    let marca;
 
-if (marcaExistente) {
+    // ===================================================
+    // CREAR MARCA SI NO EXISTE
+    // ===================================================
+    if (!marcaExistente) {
+      const { data: nuevaMarca, error: errorNuevaMarca } =
+        await supabase
+          .from("inventario_marcas")
+          .insert({
+            inventario_id: inventarioId,
+            user_id: session.user.id,
+            marca: nombreMarca,
 
-  const { error } = await supabase
-    .from("inventario_marcas")
-    .update({
-      stock: Number(marcaExistente.stock) + Number(prod.cantidad),
-      precioCompra: prod.precioCompra,
-      precioVenta: prod.precioVenta
-    })
-    .eq("id", marcaExistente.id);
+            // Inicialmente la marca tendrá la cantidad
+            // de la variante que estamos recibiendo.
+            stock: 0,
 
-  if (error) throw error;
+            minimo: 0,
+            precioCompra: Number(prod.precioCompra || 0),
+            precioVenta: Number(prod.precioVenta || 0),
+            tipoVenta: "Unidad",
+            caracteristicas: ""
+          })
+          .select()
+          .single();
 
-} 
-else {
-  const { error } = await supabase
-    .from("inventario_marcas")
-    .insert({
-      inventario_id: inventarioId,
-      user_id: session.user.id,
-      marca: prod.marca,
-      stock: Number(prod.cantidad),
-      minimo: 0,
-      precioCompra: Number(prod.precioCompra),
-      precioVenta: Number(prod.precioVenta),
-      tipoVenta: "Unidad",
-      caracteristicas: prod.caracteristicas || ""
-    });
+      if (errorNuevaMarca) throw errorNuevaMarca;
 
-  if (error) throw error;
-}
-}
-  
+      marca = nuevaMarca;
+    } else {
+      marca = marcaExistente;
+    }// ===================================================
+    // 4. BUSCAR VARIANTE
+    // ===================================================
+    const nombreVariante = (prod.caracteristicas || "").trim();
 
+    const { data: variantes, error: errorVariantes } = await supabase
+      .from("inventario_variantes")
+      .select("*")
+      .eq("inventario_id", inventarioId)
+      .eq("marca_id", marca.id)
+      .eq("user_id", session.user.id);
+
+    if (errorVariantes) throw errorVariantes;
+
+    const varianteExistente = (variantes || []).find(
+      v =>
+        (v.nombre || "").trim().toLowerCase() ===
+        nombreVariante.toLowerCase()
+    );
+
+    let variante;
+
+    // ===================================================
+    // 5. AUMENTAR VARIANTE EXISTENTE
+    // ===================================================
+    if (varianteExistente) {
+      const nuevoStock =
+        Number(varianteExistente.stock || 0) +
+        Number(prod.cantidad || 0);
+
+      const { data: varianteActualizada, error: errorActualizarVariante } =
+        await supabase
+          .from("inventario_variantes")
+          .update({
+            stock: nuevoStock,
+            precioCompra: Number(prod.precioCompra || 0),
+            precioVenta: Number(prod.precioVenta || 0),
+            tipoVenta: prod.tipoVenta || "Unidad"
+          })
+          .eq("id", varianteExistente.id)
+          .eq("user_id", session.user.id)
+          .select()
+          .single();
+
+      if (errorActualizarVariante) throw errorActualizarVariante;
+
+      variante = varianteActualizada;
+
+      console.log(
+        "Variante existente actualizada:",
+        variante.nombre,
+        "→ stock:",
+        nuevoStock
+      );
+    }
+
+    // ===================================================
+    // 6. CREAR VARIANTE NUEVA
+    // ===================================================
+    else {
+      const { data: nuevaVariante, error: errorNuevaVariante } =
+        await supabase
+          .from("inventario_variantes")
+          .insert({
+            inventario_id: inventarioId,
+            marca_id: marca.id,
+            user_id: session.user.id,
+            nombre: nombreVariante || "Sin descripción",
+            stock: Number(prod.cantidad || 0),
+            minimo: 0,
+            precioCompra: Number(prod.precioCompra || 0),
+            precioVenta: Number(prod.precioVenta || 0),
+            tipoVenta: prod.tipoVenta || "Unidad"
+          })
+          .select()
+          .single();
+
+      if (errorNuevaVariante) throw errorNuevaVariante;
+
+      variante = nuevaVariante;
+
+      console.log(
+        "Nueva variante creada:",
+        variante.nombre,
+        "→ stock:",
+        variante.stock
+      );
+    }
+
+    // ===================================================
+    // 7. RECALCULAR STOCK TOTAL DE LA MARCA
+    // ===================================================
+    const { data: todasLasVariantes, error: errorTodasVariantes } =
+      await supabase
+        .from("inventario_variantes")
+        .select("stock")
+        .eq("marca_id", marca.id)
+        .eq("user_id", session.user.id);
+
+    if (errorTodasVariantes) throw errorTodasVariantes;
+
+    const stockTotalMarca = (todasLasVariantes || []).reduce(
+      (total, v) => total + Number(v.stock || 0),
+      0
+    );
+
+    const { error: errorActualizarMarca } = await supabase
+      .from("inventario_marcas")
+      .update({
+        stock: stockTotalMarca
+      })
+      .eq("id", marca.id)
+      .eq("user_id", session.user.id);
+
+    if (errorActualizarMarca) throw errorActualizarMarca;
+
+    console.log(
+      `Marca ${nombreMarca}: stock total = ${stockTotalMarca}`
+    );
+  }
+
+  console.log("Pedido recibido correctamente.");
   return true;
 }

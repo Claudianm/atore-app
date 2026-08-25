@@ -158,7 +158,7 @@ const [form, setForm] = useState(
         </div>
         {[
         { label: "Marca", key: "marca", type: "text", placeholder: "Ej: Carozzi" },
-        { label: "Características", key: "caracteristicas", type: "text", placeholder: "Ej: 500 g, Zero 1 L, Entera 1 L" },
+        { label: "Variante / características", key: "caracteristicas", type: "text", placeholder: "Ej: Barra 100 g, Oblea 80 g, Turrón 100 g" },
         { label: "Precio de compra ($)", key: "precioCompra", type: "number", placeholder: "0" },
         { label: "Precio de venta ($)", key: "precioVenta", type: "number", placeholder: "0" },
         { label: "Stock actual", key: "stock", type: "number", placeholder: "0" },  
@@ -208,225 +208,1200 @@ const guardarMarca = async (form) => {
     alert("Sesión no encontrada");
     return;
   }
-console.log(form);
-  let error;
 
+  const nombreMarca = (form.marca || "").trim();
+
+  if (!nombreMarca) {
+    alert("Debes ingresar una marca");
+    return;
+  }
+
+  console.log("Guardando:", form);
+
+  // =====================================================
+  // EDITAR VARIANTE EXISTENTE
+  // =====================================================
+  if (form.varianteId) {
+    const { error } = await supabase
+      .from("inventario_variantes")
+      .update({
+        nombre: form.caracteristicas || "",
+        stock: Number(form.stock || 0),
+        minimo: Number(form.minimo || 0),
+        precioCompra: Number(form.precioCompra || 0),
+        precioVenta: Number(form.precioVenta || 0),
+        tipoVenta: form.tipoVenta,
+      })
+      .eq("id", form.varianteId)
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      console.error("Error actualizando variante:", error);
+      alert("Error al guardar la variante");
+      return;
+    }
+
+    console.log("Variante actualizada correctamente");
+    window.location.reload();
+    return;
+  }
+
+  // =====================================================
+  // EDITAR MARCA EXISTENTE
+  // =====================================================
   if (form.id) {
-    // Editar una marca existente
-    ({ error } = await supabase
+    const { error } = await supabase
       .from("inventario_marcas")
       .update({
-        marca: form.marca,
-        stock: form.stock,
-        minimo: form.minimo,
-        precioCompra: form.precioCompra,
-        precioVenta: form.precioVenta,
+        marca: nombreMarca,
+        stock: Number(form.stock || 0),
+        minimo: Number(form.minimo || 0),
+        precioCompra: Number(form.precioCompra || 0),
+        precioVenta: Number(form.precioVenta || 0),
         tipoVenta: form.tipoVenta,
-        caracteristicas: form.caracteristicas
+        caracteristicas: form.caracteristicas || "",
       })
       .eq("id", form.id)
-      .eq("user_id", session.user.id));
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      console.error("Error actualizando marca:", error);
+      alert("Error al guardar la marca");
+      return;
+    }
+
+    console.log("Marca actualizada correctamente");
+    window.location.reload();
+    return;
+  }
+
+  // =====================================================
+  // BUSCAR MARCA EXISTENTE
+  // =====================================================
+  const {
+    data: marcasExistentes,
+    error: errorBusqueda,
+  } = await supabase
+    .from("inventario_marcas")
+    .select("*")
+    .eq("inventario_id", producto.id)
+    .eq("user_id", session.user.id);
+
+  if (errorBusqueda) {
+    console.error("Error buscando marcas:", errorBusqueda);
+    alert("Error al buscar las marcas");
+    return;
+  }
+
+  const marcaExistente = (marcasExistentes || []).find(
+    (m) =>
+      (m.marca || "").trim().toLowerCase() ===
+      nombreMarca.toLowerCase()
+  );
+
+  let marca;
+
+  // =====================================================
+  // USAR MARCA EXISTENTE
+  // =====================================================
+  if (marcaExistente) {
+    marca = marcaExistente;
+    console.log("MARCA EXISTENTE:", marca);
   } else {
-    // Crear una marca nueva
-    ({ error } = await supabase
+    // ===================================================
+    // CREAR MARCA NUEVA
+    // ===================================================
+    const {
+      data: nuevaMarca,
+      error: errorMarca,
+    } = await supabase
       .from("inventario_marcas")
       .insert({
         inventario_id: producto.id,
         user_id: session.user.id,
-        marca: form.marca,
-        stock: form.stock,
-        minimo: form.minimo,
-        precioCompra: form.precioCompra,
-        precioVenta: form.precioVenta,
+        marca: nombreMarca,
+        stock: Number(form.stock || 0),
+        minimo: Number(form.minimo || 0),
+        precioCompra: Number(form.precioCompra || 0),
+        precioVenta: Number(form.precioVenta || 0),
         tipoVenta: form.tipoVenta,
-        caracteristicas: form.caracteristicas
-      }));
+        caracteristicas: "",
+      })
+      .select()
+      .single();
+
+    if (errorMarca) {
+      console.error("Error creando marca:", errorMarca);
+      alert("Error al guardar la marca");
+      return;
+    }
+
+    marca = nuevaMarca;
+
+    console.log("MARCA NUEVA:", marca);
+  }
+  // =====================================================
+  // CREAR NUEVA VARIANTE
+  // =====================================================
+  const {
+    error: errorVariante,
+  } = await supabase
+    .from("inventario_variantes")
+    .insert({
+      inventario_id: producto.id,
+      marca_id: marca.id,
+      user_id: session.user.id,
+      nombre: form.caracteristicas || "",
+      stock: Number(form.stock || 0),
+      minimo: Number(form.minimo || 0),
+      precioCompra: Number(form.precioCompra || 0),
+      precioVenta: Number(form.precioVenta || 0),
+      tipoVenta: form.tipoVenta,
+    });
+
+  if (errorVariante) {
+    console.error("Error creando variante:", errorVariante);
+    alert(
+      "La marca existe/ha sido guardada, pero hubo un error al guardar la variante."
+    );
+    return;
   }
 
-  if (error) {
-  console.error(error);
-  alert("Error al guardar la marca");
-  return;
-}
+  console.log("VARIANTE GUARDADA:", {
+    marca_id: marca.id,
+    nombre: form.caracteristicas || "",
+  });
 
-const { data: prueba } = await supabase
-  .from("inventario_marcas")
-  .select("caracteristicas")
-  .eq("id", form.id)
-  .single();
-
-
-window.location.reload();
+  window.location.reload();
 };
 
-const marcas = Array.isArray(producto.marcas) ? producto.marcas : [];
+
+// =====================================================
+// DATOS PARA EL PRODUCTO
+// =====================================================
+
+const marcas = Array.isArray(producto.marcas)
+  ? producto.marcas
+  : [];
 
 const totalVendidos = marcas.reduce(
-  (a, m) => a + (Number(m.vendidos) || 0),
+  (a, m) => a + Number(m.vendidos || 0),
   0
 );
 
 const margenProm =
   marcas.length > 0
     ? Math.round(
-        marcas.reduce((a, m) => a + margenPct(m), 0) / marcas.length
+        marcas.reduce(
+          (a, m) => a + margenPct(m),
+          0
+        ) / marcas.length
       )
     : 0;
 
-const mejorMarca =
-  [...marcas].sort(
-    (a, b) => (Number(b.vendidos) || 0) - (Number(a.vendidos) || 0)
-  )[0];
+const mejorMarca = [...marcas].sort(
+  (a, b) =>
+    Number(b.vendidos || 0) -
+    Number(a.vendidos || 0)
+)[0];
 
-const mayorMargen =
-  [...marcas].sort(
-    (a, b) => margenPct(b) - margenPct(a)
-  )[0];
-  return (
-    <div>
-      <div style={{ background: "#1a3a2a", padding: "16px 16px 14px" }}>
-        <button onClick={onVolver} style={{ background: "none", border: "none", color: "#7fbb95", fontSize: 13, cursor: "pointer", padding: 0, marginBottom: 8 }}>← Volver</button>
-        <div style={{ color: "#e8f5ee", fontSize: 20, fontWeight: 500 }}>{producto.nombre}</div>
-        <div style={{ color: "#7fbb95", fontSize: 12, marginBottom: 12 }}>{producto.categoria} · {marcas.length} marcas</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {[{ v: stockTotal(producto), c: "#e8f5ee", l: "Stock total" }, { v: totalVendidos, c: "#7febb8", l: "Vendidos" }, { v: margenProm + "%", c: margenColor(margenProm), l: "Margen prom." }].map(x => (
-            <div key={x.l} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 15, fontWeight: 500, color: x.c }}>{x.v}</div><div style={{ fontSize: 10, color: "#7fbb95" }}>{x.l}</div></div>
-          ))}
-        </div>
-      </div>
+const mayorMargen = [...marcas].sort(
+  (a, b) => margenPct(b) - margenPct(a)
+)[0];
 
-      <div style={{ display: "flex", background: "var(--color-background-primary,#fff)", borderBottom: "0.5px solid var(--color-border-tertiary,#ddd)" }}>
-        {[{ k: "stock", l: "Stock por marca" }, { k: "analisis", l: "Análisis" }].map(t => (
-          <button key={t.k} onClick={() => setVista(t.k)} style={{ flex: 1, padding: "10px", fontSize: 13, background: "none", border: "none", cursor: "pointer", color: vista === t.k ? "#1a3a2a" : "var(--color-text-secondary,#888)", borderBottom: vista === t.k ? "2px solid #1a3a2a" : "2px solid transparent", fontWeight: vista === t.k ? 500 : 400 }}>{t.l}</button>
-        ))}
-      </div>
-        
-      <div style={{ padding: "14px", paddingBottom: 80 }}>
-        {vista === "stock" && (
-          producto.tieneMarcas ? (
-            <>
-              {marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas. Agrega la primera.</div>}
-              {marcas.map(m => {
-                const est = estadoStock(m.stock, m.minimo);
-                const b = badgeStock[est];
-              const mg = margenPct(m);
-              const pct = m.minimo > 0 ? Math.min(100, Math.round((m.stock / (m.minimo * 4)) * 100)) : 0;
-              const barColor = est === "sin" ? "#e24b4a" : est === "poco" ? "#ef9f27" : "#1d9e75";
-              return (
-                <div key={m.id} style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}><div>
-  <div style={{ fontWeight: 500, fontSize: 14 }}>
-    {m.marca}
-  </div>
 
-  {m.caracteristicas && (
+// =====================================================
+// RENDER
+// =====================================================
+
+return (
+  <div>
+
+    {/* =================================================
+        CABECERA
+    ================================================= */}
+
     <div
       style={{
-        fontSize: 12,
-        color: "#666",
-        marginTop: 2
+        background: "#1a3a2a",
+        padding: "16px 16px 14px",
       }}
     >
-      {m.caracteristicas}
+      <button
+        onClick={onVolver}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#7fbb95",
+          fontSize: 13,
+          cursor: "pointer",
+          padding: 0,
+          marginBottom: 8,
+        }}
+      >
+        ← Volver
+      </button>
+
+      <div
+        style={{
+          color: "#e8f5ee",
+          fontSize: 20,
+          fontWeight: 500,
+        }}
+      >
+        {producto.nombre}
+      </div>
+
+      <div
+        style={{
+          color: "#7fbb95",
+          fontSize: 12,
+          marginBottom: 12,
+        }}
+      >
+        {producto.categoria} · {marcas.length} marcas
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 8,
+        }}
+      >
+        {[
+          {
+            v: stockTotal(producto),
+            c: "#e8f5ee",
+            l: "Stock total",
+          },
+          {
+            v: totalVendidos,
+            c: "#7febb8",
+            l: "Vendidos",
+          },
+          {
+            v: margenProm + "%",
+            c: margenColor(margenProm),
+            l: "Margen prom.",
+          },
+        ].map((x) => (
+          <div
+            key={x.l}
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              borderRadius: 8,
+              padding: "8px 10px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                color: x.c,
+              }}
+            >
+              {x.v}
+            </div>
+
+            <div
+              style={{
+                fontSize: 10,
+                color: "#7fbb95",
+              }}
+            >
+              {x.l}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
-  )}
-</div><div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Compra: {formatPesos(m.precioCompra)} · Venta: {formatPesos(m.precioVenta)}</div></div>
-                    <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, fontWeight: 500, background: b.bg, color: b.color }}>{b.label}</span>
+
+
+    {/* =================================================
+        TABS
+    ================================================= */}
+    <div
+      style={{
+        display: "flex",
+        background:
+          "var(--color-background-primary,#fff)",
+        borderBottom:
+          "0.5px solid var(--color-border-tertiary,#ddd)",
+      }}
+    >
+      {[
+        {
+          k: "stock",
+          l: "Stock por marca",
+        },
+        {
+          k: "analisis",
+          l: "Análisis",
+        },
+      ].map((t) => (
+        <button
+          key={t.k}
+          onClick={() => setVista(t.k)}
+          style={{
+            flex: 1,
+            padding: "10px",
+            fontSize: 13,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color:
+              vista === t.k
+                ? "#1a3a2a"
+                : "var(--color-text-secondary,#888)",
+            borderBottom:
+              vista === t.k
+                ? "2px solid #1a3a2a"
+                : "2px solid transparent",
+            fontWeight:
+              vista === t.k ? 500 : 400,
+          }}
+        >
+          {t.l}
+        </button>
+      ))}
+    </div>
+
+
+    {/* =================================================
+        CONTENIDO
+    ================================================= */}
+
+    <div
+      style={{
+        padding: "14px",
+        paddingBottom: 80,
+      }}
+    >
+
+      {/* =================================================
+          STOCK
+      ================================================= */}
+
+      {vista === "stock" &&
+        (producto.tieneMarcas ? (
+          <>
+
+            {marcas.length === 0 && (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "32px 0",
+                  color:
+                    "var(--color-text-secondary,#888)",
+                  fontSize: 14,
+                }}
+              >
+                Sin marcas. Agrega la primera.
+              </div>
+            )}
+
+            {marcas.map((m) => {
+              const est = estadoStock(
+                m.stock,
+                m.minimo
+              );
+
+              const b = badgeStock[est];
+
+              const variantesMarca =
+                Array.isArray(m.variantes)
+                  ? m.variantes
+                  : [];
+
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    background:
+                      "var(--color-background-primary,#fff)",
+                    border:
+                      "0.5px solid var(--color-border-tertiary,#ddd)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    marginBottom: 8,
+                  }}
+                >
+
+                  {/* MARCA */}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 14,
+                        }}
+                      >
+                        {m.marca}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color:
+                            "var(--color-text-secondary,#888)",
+                          marginTop: 3,
+                        }}
+                      >
+                        {variantesMarca.length}{" "}
+                        {variantesMarca.length === 1
+                          ? "variante"
+                          : "variantes"}
+                      </div>
+                    </div>
+
+                    <span
+                      style={{fontSize: 11,
+                        padding: "3px 9px",
+                        borderRadius: 20,
+                        fontWeight: 500,
+                        background: b.bg,
+                        color: b.color,
+                      }}
+                    >
+                      {b.label}
+                    </span>
                   </div>
-                  <div style={{ height: 4, background: "var(--color-background-secondary,#f1f0ea)", borderRadius: 10, marginTop: 8, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 10 }} /></div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12 }}>
-                    <span style={{ color: "var(--color-text-secondary,#888)" }}>Stock: <strong style={{ color: "var(--color-text-primary,#111)" }}>{m.stock}</strong> · mín {m.minimo}</span>
-                    <span style={{ color: margenColor(mg), fontWeight: 500 }}>Margen: {mg}%</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 10, justifyContent: "flex-end" }}>
-                    <button onClick={() => setModalMarca(m)} style={{ background: "var(--color-background-secondary,#f5f4f0)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>Editar</button>
-                    <button onClick={() => setBorrarMarca(m)} style={{ background: "#fcebeb", border: "0.5px solid #f7c1c1", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", color: "#a32d2d" }}>Borrar</button>
-                  </div>
+
+
+                  {/* VARIANTES */}
+
+                  {variantesMarca.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      {variantesMarca.map((v) => (
+                        <div
+                          key={v.id}
+                          style={{
+                            background:
+                              "var(--color-background-secondary,#f5f4f0)",
+                            borderRadius: 8,
+                            padding: "10px",
+                          }}
+                        >
+
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
+                              alignItems:
+                                "flex-start",
+                              gap: 8,
+                            }}
+                          >
+
+                            <div
+                              style={{ flex: 1 }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {v.nombre ||
+                                  "Sin descripción"}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color:
+                                    "var(--color-text-secondary,#888)",
+                                  marginTop: 3,
+                                }}
+                              >
+                                Stock:{" "}
+                                <strong>
+                                  {v.stock ?? 0}
+                                </strong>
+                                {" · "}
+                                Compra:{" "}
+                                {formatPesos(
+                                  v.precioCompra
+                                )}
+                                {" · "}
+                                Venta:{" "}
+                                {formatPesos(
+                                  v.precioVenta
+                                )}
+                              </div>
+                            </div>
+
+
+                            {/* BOTONES VARIANTE */}
+
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 5,
+                                flexShrink: 0,
+                              }}
+                            >
+
+                              <button
+                                onClick={() => {
+                                  console.log(
+                                    "Editar variante:",
+                                    v
+                                  );
+
+                                  setModalMarca({
+                                    id: v.marca_id,
+                                    varianteId: v.id,
+                                    marca: m.marca,caracteristicas:
+                                      v.nombre || "",
+                                    stock:
+                                      v.stock ?? 0,
+                                    minimo:
+                                      v.minimo ?? 0,
+                                    precioCompra:
+                                      v.precioCompra ?? 0,
+                                    precioVenta:
+                                      v.precioVenta ?? 0,
+                                    tipoVenta:
+                                      v.tipoVenta ||
+                                      "unidad",
+                                  });
+                                }}
+                                style={{
+                                  background:
+                                    "var(--color-background-primary,#fff)",
+                                  border:
+                                    "0.5px solid var(--color-border-tertiary,#ddd)",
+                                  borderRadius: 6,
+                                  padding: "5px 8px",
+                                  fontSize: 11,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Editar
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setBorrarMarca({
+                                    id: v.id,
+                                    esVariante: true,
+                                    marcaId: m.id,
+                                    variante: v,
+                                  });
+                                }}
+                                style={{
+                                  background: "#fcebeb",
+                                  border:
+                                    "0.5px solid #f7c1c1",
+                                  borderRadius: 6,
+                                  padding: "5px 8px",
+                                  fontSize: 11,
+                                  cursor: "pointer",
+                                  color: "#a32d2d",
+                                }}
+                              >
+                                Borrar
+                              </button>
+
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+
+                  
                 </div>
               );
-          })}
+            })}
+
           </>
         ) : (
           <DetalleProductoSimple
-  producto={producto}
-  onVolver={onVolver}
-  onActualizar={onActualizar}
-  session={session}
-/>
-        )
+            producto={producto}
+            onVolver={onVolver}
+            onActualizar={onActualizar}
+            session={session}
+          />
+        ))}
+
+
+      {/* =================================================
+          ANÁLISIS
+      ================================================= */}
+
+      {vista === "analisis" && (
+        <>
+          {marcas.length === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "32px 0",
+                color:
+                  "var(--color-text-secondary,#888)",
+                fontSize: 14,
+              }}
+            >
+              Sin marcas para analizar.
+            </div>
+          )}
+
+          {marcas.length > 0 && (
+            <>
+
+              {/* MÁS VENDIDA / MAYOR MARGEN */}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "1fr 1fr",
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+
+                <div
+                  style={{
+                    background:
+                      "var(--color-background-primary,#fff)",
+                    border:
+                      "0.5px solid #b8dda0",
+                    borderLeft:
+                      "3px solid #1d9e75",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color:
+                        "var(--color-text-secondary,#888)",
+                    }}
+                  >
+                    Más vendida
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginTop: 2,
+                    }}
+                  >
+                    {mejorMarca?.marca}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#1d9e75",
+                    }}
+                  >
+                    {mejorMarca?.vendidos || 0} unidades
+                  </div>
+                </div>
+
+
+                <div
+                  style={{
+                    background:
+                      "var(--color-background-primary,#fff)",
+                    border:
+                      "0.5px solid #b3d0f0",
+                    borderLeft:
+                      "3px solid #185fa5",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color:
+                        "var(--color-text-secondary,#888)",
+                    }}
+                  >
+                    Mayor margen
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginTop: 2,
+                    }}
+                  >
+                    {mayorMargen?.marca}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#185fa5",
+                    }}
+                  >
+                    {margenPct(mayorMargen || {})}%
+                  </div>
+                </div>
+
+              </div>
+
+
+              {/* RANKING DE VENTAS */}
+              <div
+                style={{
+                  background:
+                    "var(--color-background-primary,#fff)",
+                  border:
+                    "0.5px solid var(--color-border-tertiary,#ddd)",
+                  borderRadius: 12,
+                  padding: "14px",
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color:
+                      "var(--color-text-secondary,#888)",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 10,
+                  }}
+                >
+                  Ranking de ventas
+                </div>
+
+                {[...marcas]
+                  .sort(
+                    (a, b) =>
+                      (b.vendidos || 0) -
+                      (a.vendidos || 0)
+                  )
+                  .map((m, i) => {
+                    const maxV = Math.max(
+                      ...marcas.map(
+                        (x) => x.vendidos || 0
+                      )
+                    );
+
+                    const pct =
+                      maxV > 0
+                        ? Math.round(
+                            ((m.vendidos || 0) /
+                              maxV) *
+                              100
+                          )
+                        : 0;
+
+                    return (
+                      <div
+                        key={m.id}
+                        style={{
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent:
+                              "space-between",
+                            marginBottom: 3,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 13,
+                            }}
+                          >
+                            {i + 1}. {m.marca}
+                          </span>
+
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {m.vendidos || 0} uds
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            height: 6,
+                            background:
+                              "var(--color-background-secondary,#f1f0ea)",
+                            borderRadius: 10,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              background:
+                                i === 0
+                                  ? "#1d9e75"
+                                  : i === 1
+                                  ? "#4db87a"
+                                  : "#8fd4aa",
+                              borderRadius: 10,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+
+              {/* MARGEN POR MARCA */}
+
+              <div
+                style={{
+                  background:
+                    "var(--color-background-primary,#fff)",
+                  border:"0.5px solid var(--color-border-tertiary,#ddd)",
+                  borderRadius: 12,
+                  padding: "14px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color:
+                      "var(--color-text-secondary,#888)",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    marginBottom: 10,
+                  }}
+                >
+                  Margen por marca
+                </div>
+
+                {[...marcas]
+                  .sort(
+                    (a, b) =>
+                      margenPct(b) -
+                      margenPct(a)
+                  )
+                  .map((m) => {
+                    const mg = margenPct(m);
+
+                    return (
+                      <div
+                        key={m.id}
+                        style={{
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent:
+                              "space-between",
+                            marginBottom: 3,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 13,
+                            }}
+                          >
+                            {m.marca}
+                          </span>
+
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color:
+                                margenColor(mg),
+                            }}
+                          >
+                            {mg}%
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            height: 6,
+                            background:
+                              "var(--color-background-secondary,#f1f0ea)",
+                            borderRadius: 10,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${mg}%`,
+                              height: "100%",
+                              background:
+                                margenColor(mg),
+                              borderRadius: 10,
+                            }}
+                          />
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color:
+                              "var(--color-text-secondary,#888)",
+                            marginTop: 2,
+                          }}
+                        >
+                          Compra{" "}
+                          {formatPesos(
+                            m.precioCompra
+                          )}{" "}
+                          → Venta{" "}
+                          {formatPesos(
+                            m.precioVenta
+                          )}{" "}
+                          · Ganancia{" "}
+                          {formatPesos(
+                            m.precioVenta -
+                              m.precioCompra
+                          )}{" "}
+                          c/u
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+            </>
+          )}
+        </>
       )}
 
-        {vista === "analisis" && (
-          <>
-            {marcas.length === 0 && <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary,#888)", fontSize: 14 }}>Sin marcas para analizar.</div>}
-            {marcas.length > 0 && (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-                  <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid #b8dda0", borderLeft: "3px solid #1d9e75", borderRadius: 10, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)" }}>Más vendida</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{mejorMarca?.marca}</div>
-                    <div style={{ fontSize: 12, color: "#1d9e75" }}>{mejorMarca?.vendidos || 0} unidades</div>
-                  </div>
-                  <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid #b3d0f0", borderLeft: "3px solid #185fa5", borderRadius: 10, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)" }}>Mayor margen</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{mayorMargen?.marca}</div>
-                    <div style={{ fontSize: 12, color: "#185fa5" }}>{margenPct(mayorMargen || {})}%</div>
-                  </div>
-                </div>
+    </div>
 
-                <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "14px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary,#888)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Ranking de ventas</div>
-                  {[...marcas].sort((a, b) => (b.vendidos || 0) - (a.vendidos || 0)).map((m, i) => {
-                    const maxV = Math.max(...marcas.map(x => x.vendidos || 0));
-                    const pct = maxV > 0 ? Math.round(((m.vendidos || 0) / maxV) * 100) : 0;
-                    return (
-                      <div key={m.id} style={{ marginBottom: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}><span style={{ fontSize: 13 }}>{i + 1}. {m.marca}</span><span style={{ fontSize: 13, fontWeight: 500 }}>{m.vendidos || 0} uds</span></div>
-                        <div style={{ height: 6, background: "var(--color-background-secondary,#f1f0ea)", borderRadius: 10, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: i === 0 ? "#1d9e75" : i === 1 ? "#4db87a" : "#8fd4aa", borderRadius: 10 }} /></div>
-                      </div>
-                    );
-                  })}
-                </div>
 
-                <div style={{ background: "var(--color-background-primary,#fff)", border: "0.5px solid var(--color-border-tertiary,#ddd)", borderRadius: 12, padding: "14px" }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary,#888)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Margen por marca</div>
-                  {[...marcas].sort((a, b) => margenPct(b) - margenPct(a)).map(m => {
-                    const mg = margenPct(m);
-                    return (
-                      <div key={m.id} style={{ marginBottom: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}><span style={{ fontSize: 13 }}>{m.marca}</span><span style={{ fontSize: 13, fontWeight: 600, color: margenColor(mg) }}>{mg}%</span></div>
-                        <div style={{ height: 6, background: "var(--color-background-secondary,#f1f0ea)", borderRadius: 10, overflow: "hidden" }}><div style={{ width: `${mg}%`, height: "100%", background: margenColor(mg), borderRadius: 10 }} /></div>
-                        <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginTop: 2 }}>Compra {formatPesos(m.precioCompra)} → Venta {formatPesos(m.precioVenta)} · Ganancia {formatPesos(m.precioVenta - m.precioCompra)} c/u</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
+    {/* =================================================
+        BOTÓN AGREGAR MARCA
+    ================================================= */}
+    <div
+      style={{
+        position: "fixed",
+        bottom: 72,
+        right: 18,
+      }}
+    >
+      <button
+        onClick={() =>
+          setModalMarca("nuevo")
+        }
+        style={{
+          background: "#1a3a2a",
+          color: "white",
+          border: "none",
+          borderRadius: 28,
+          padding: "12px 18px",
+          fontSize: 13,
+          fontWeight: 500,
+          cursor: "pointer",
+          boxShadow:
+            "0 4px 16px rgba(26,58,42,0.35)",
+        }}
+      >
+        + Agregar marca
+      </button>
+    </div>
 
-      <div style={{ position: "fixed", bottom: 72, right: 18 }}>
-        <button onClick={() => setModalMarca("nuevo")} style={{ background: "#1a3a2a", color: "white", border: "none", borderRadius: 28, padding: "12px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", boxShadow: "0 4px 16px rgba(26,58,42,0.35)" }}>+ Agregar marca</button>
-      </div>
+
+    {/* =================================================
+        MODAL MARCA
+    ================================================= */}
 
     {modalMarca && (
-  <ModalMarca
-    marca={modalMarca === "nuevo" ? null : modalMarca}
-    onGuardar={guardarMarca}
-    onCerrar={() => setModalMarca(null)}
-    theme={theme}
-  />
-)}
-      {borrarMarca && <ConfirmarBorrar titulo="marca" onConfirmar={() => { onActualizar({ ...producto, marcas: marcas.filter(m => m.id !== borrarMarca.id) }); setBorrarMarca(null); }} onCancelar={() => setBorrarMarca(null)} />}
-    </div>
-  );
+      <ModalMarca
+        marca={
+          modalMarca === "nuevo"
+            ? null
+            : modalMarca
+        }
+        onGuardar={guardarMarca}
+        onCerrar={() =>
+          setModalMarca(null)
+        }
+        theme={theme}
+      />
+    )}
+
+
+    {/* =================================================
+        BORRAR MARCA O VARIANTE
+    ================================================= */}
+
+    {borrarMarca && (
+      <ConfirmarBorrar
+        titulo={
+          borrarMarca.esVariante
+            ? "variante"
+            : "marca"
+        }
+
+        onConfirmar={async () => {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (!session) {
+            alert("Sesión no encontrada");
+            return;
+          }
+
+
+          // =============================================
+          // BORRAR UNA VARIANTE
+          // =============================================
+
+          if (borrarMarca.esVariante) {
+            const {
+              error: errorVariante,
+            } = await supabase
+              .from("inventario_variantes")
+              .delete()
+              .eq("id", borrarMarca.id)
+              .eq(
+                "user_id",
+                session.user.id
+              );
+
+            if (errorVariante) {
+              console.error(
+                "Error borrando variante:",
+                errorVariante
+              );
+
+              alert(
+                "No se pudo borrar la variante."
+              );
+
+              return;
+            }
+
+            console.log(
+              "Variante eliminada correctamente."
+            );
+
+            setBorrarMarca(null);
+
+            window.location.reload();
+
+            return;
+          }
+
+
+          // =============================================
+          // BORRAR MARCA Y SUS VARIANTES
+          // =============================================
+
+          const {
+            error: errorVariantes,
+          } = await supabase
+            .from("inventario_variantes")
+            .delete()
+            .eq(
+              "marca_id",
+              borrarMarca.id
+            )
+            .eq(
+              "user_id",
+              session.user.id
+            );
+
+          if (errorVariantes) {
+            console.error(
+              "Error borrando variantes:",
+              errorVariantes
+            );
+
+            alert(
+              "No se pudieron borrar las variantes."
+            );
+
+            return;
+          }
+
+
+          const {
+            error: errorMarca,
+          } = await supabase
+            .from("inventario_marcas")
+            .delete()
+            .eq(
+              "id",
+              borrarMarca.id
+            )
+            .eq(
+              "user_id",
+              session.user.id
+            );
+
+          if (errorMarca) {
+            console.error(
+              "Error borrando marca:",
+              errorMarca
+            );
+
+            alert(
+              "No se pudo borrar la marca."
+            );
+
+            return;
+          }
+
+
+          onActualizar({
+            ...producto,
+            marcas: marcas.filter(
+              (m) =>
+                m.id !== borrarMarca.id
+            ),
+          });
+
+          setBorrarMarca(null);
+          console.log(
+            "Marca y variantes eliminadas correctamente."
+          );
+        }}
+
+        onCancelar={() =>
+          setBorrarMarca(null)
+        }
+      />
+    )}
+
+  </div>
+);
 }
-
-
 // ============ PAGOS ============
+
 function ModalPago({ pago, onGuardar, onCerrar }) {
   const [form, setForm] = useState(pago || { tipo: "Venta", descripcion: "", monto: "", fecha: hoy, pagado: true });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -896,8 +1871,8 @@ const tv = marcas.reduce((a, m) => a + (Number(m.vendidos) || 0), 0);
   );
 }
 // ============ PEDIDOS ============
-function ModalPedido({ pedido, onGuardar, onCerrar }) {
-  const [form, setForm] = useState(
+function ModalPedido({ pedido, onGuardar, onCerrar, inventario }) {
+const [form, setForm] = useState(
   pedido || {
     proveedor: "",
     fecha: hoy,
@@ -916,6 +1891,8 @@ const [nuevoProducto, setNuevoProducto] = useState({
   precioVenta: 0
 });
 const [indiceEditando, setIndiceEditando] = useState(null);
+const [mostrarProductos, setMostrarProductos] = useState(false);
+const [mostrarMarcas, setMostrarMarcas] = useState(false);
 useEffect(() => {
   if (pedido?.productos?.length > 0) {
     setNuevoProducto(pedido.productos[0]);
@@ -976,23 +1953,113 @@ const agregarProducto = () => {
   </select>
 
   <input
-    style={inputStyle}
-    placeholder="Producto"
-    value={nuevoProducto.producto}
-    onChange={e => setNuevoProducto({ ...nuevoProducto, producto: e.target.value })}
-  />
+  style={inputStyle}
+  placeholder="Producto"
+  value={nuevoProducto.producto}
+  onChange={e => {
+  setNuevoProducto({
+    ...nuevoProducto,
+    producto: e.target.value
+  });
+  setMostrarProductos(true);
+}}
+/>
+
+{mostrarProductos && nuevoProducto.producto && (
+  <div
+    style={{
+      border: "1px solid #ddd",
+      borderRadius: 6,
+      maxHeight: 150,
+      overflowY: "auto",
+      background: "#fff"
+    }}
+  >
+    {inventario
+      .filter(p =>
+        p.nombre
+          .toLowerCase()
+          .includes(nuevoProducto.producto.toLowerCase())
+      )
+      .map(p => (
+        <div
+          key={p.id}
+          style={{
+            padding: "8px",
+            cursor: "pointer"
+          }}
+          onClick={() => {
+  setNuevoProducto({
+    ...nuevoProducto,
+    producto: p.nombre,
+    marca: ""
+  });
+  setMostrarProductos(false);
+}}
+        >
+          {p.nombre}
+        </div>
+      ))}
+  </div>
+)}
 
   <input
   style={inputStyle}
   placeholder="Marca"
   value={nuevoProducto.marca}
-  onChange={e =>
+  onChange={e => {
     setNuevoProducto({
       ...nuevoProducto,
       marca: e.target.value
-    })
-  }
+    });
+    setMostrarMarcas(true);
+  }}
 />
+
+{mostrarMarcas && nuevoProducto.marca && (
+  <div
+    style={{
+      border: "1px solid #ddd",
+      borderRadius: 6,
+      maxHeight: 120,
+      overflowY: "auto",
+      background: "#fff"
+    }}
+  >
+    {(
+      inventario.find(
+        p => p.nombre === nuevoProducto.producto
+      )?.marcas || []
+    )
+      .filter(m =>
+        m.marca
+          .toLowerCase()
+          .includes(nuevoProducto.marca.toLowerCase())
+      )
+      .map(m => (
+        <div
+          key={m.id}
+          style={{
+            padding: "8px",
+            cursor: "pointer"
+          }}
+          onClick={() => {
+  setNuevoProducto({
+    ...nuevoProducto,
+    marca: m.marca,
+    caracteristicas: m.caracteristicas,
+    precioCompra: m.precioCompra,
+    precioVenta: m.precioVenta
+  });
+
+  setMostrarMarcas(false);
+}}
+        >
+          {m.marca}
+        </div>
+      ))}
+  </div>
+)}
 
 <Campo label="Características">
   <input
@@ -1064,6 +2131,49 @@ const agregarProducto = () => {
   ? "💾 Guardar cambios"
   : "+ Agregar producto"}
   </button>
+  {form.productos.length > 0 && (
+  <div
+    style={{
+      marginTop: 15,
+      border: "1px solid #ddd",
+      borderRadius: 8,
+      padding: 10,
+      background: "#fafafa"
+    }}
+  >
+    <b>Productos del pedido</b>
+
+    {form.productos.map((p, i) => (
+      <div
+        key={i}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "8px 0",
+          borderBottom: "1px solid #eee"
+        }}
+      >
+        <div>
+          <div><b>{p.producto}</b></div>
+          <div>{p.marca}</div>
+          <div style={{ fontSize: 12, color: "#666" }}>
+            {p.cantidad} × ${p.precioCompra}
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            setNuevoProducto(p);
+            setIndiceEditando(i);
+          }}
+        >
+          ✏️
+        </button>
+      </div>
+    ))}
+  </div>
+)}
 
 </div>
      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1145,8 +2255,14 @@ const agregarProducto = () => {
   );
 }
 
-function Pedidos({ data, setData, session, cargarInventario }) {
-  const [filtro, setFiltro] = useState("Todos");
+function Pedidos({
+  data,
+  setData,
+  session,
+  cargarInventario,
+  inventario
+}) {
+const [filtro, setFiltro] = useState("Todos");
   const [modal, setModal] = useState(null);
   const [borrar, setBorrar] = useState(null);
   const [expandido, setExpandido] = useState(null);
@@ -1314,7 +2430,14 @@ const guardar = async (form) => {
         ))}
       </div>
       <FAB label="+ Nuevo pedido" onClick={() => setModal("nuevo")} />
-      {modal && <ModalPedido pedido={modal === "nuevo" ? null : modal} onGuardar={guardar} onCerrar={() => setModal(null)} />}
+{modal && (
+  <ModalPedido
+    pedido={modal === "nuevo" ? null : modal}
+    inventario={inventario}
+    onGuardar={guardar}
+    onCerrar={() => setModal(null)}
+  />
+)}
       {borrar && <ConfirmarBorrar titulo="pedido" onConfirmar={async () => {
   const {
     data: { session },
@@ -2284,21 +3407,35 @@ if (errorMarcas) {
   console.error("Error cargando marcas:", errorMarcas);
   return;
 }
-// Migrar automáticamente productos antiguos
+const { data: variantes, error: errorVariantes } = await supabase
+  .from("inventario_variantes")
+  .select("*")
+  .eq("user_id", session.user.id);
+
+if (errorVariantes) {
+  console.error("Error cargando variantes:", errorVariantes);
+  return;
+}
+// =====================================================
+// MIGRAR PRODUCTOS ANTIGUOS
+// =====================================================
+
 for (const p of data || []) {
+
   const tieneMarca = marcas.some(m => m.inventario_id === p.id);
 
-  // Ignorar registros que ya fueron migrados
   console.log(
-  p.nombre,
-  "tieneMarca:",
-  tieneMarca,
-  "stock:",
-  p.stock
-);
+    p.nombre,
+    "tieneMarca:",
+    tieneMarca,
+    "stock:",
+    p.stock
+  );
+
+  // Si ya tiene marcas o no tiene stock antiguo,
+  // no crear una marca automática.
   if (tieneMarca || p.stock == null) continue;
 
-  // Si el campo "marcas" contiene un JSON antiguo, no usarlo
   let nombreMarca = "Sin marca";
 
   if (typeof p.marcas === "string") {
@@ -2313,39 +3450,114 @@ for (const p of data || []) {
       inventario_id: p.id,
       user_id: p.user_id,
       marca: nombreMarca,
-      stock: p.stock,
-      minimo: p.minimo || 0,
-      precioCompra: p.precioCompra,
-      precioVenta: p.precioVenta,
+      stock: Number(p.stock || 0),
+      minimo: Number(p.minimo || 0),
+      precioCompra: Number(p.precioCompra || 0),
+      precioVenta: Number(p.precioVenta || 0),
       tipoVenta: p.tipoVenta || "Unidad",
       caracteristicas: ""
-    });
+    })
+    .select()
+    .single();
 
   if (errorInsert) {
     console.error("Error migrando:", p.nombre, errorInsert);
-  } else {
-    marcas.push({
-      inventario_id: p.id,
-      marca: nombreMarca,
-      stock: p.stock,
-      minimo: p.minimo || 0,
-      precioCompra: p.precioCompra,
-      precioVenta: p.precioVenta,
-      tipoVenta: p.tipoVenta || "Unidad",
-      caracteristicas: ""
-    });
+    continue;
   }
+
+  marcas.push(nuevaMarca);
+
+  console.log("Marca antigua migrada:", nuevaMarca);
 }
+
+
+// =====================================================
+// CREAR VARIANTES PARA MARCAS ANTIGUAS
+// =====================================================
+
+for (const m of marcas) {
+
+  // ¿Esta marca ya tiene variantes?
+  const tieneVariantes = variantes.some(
+    v => v.marca_id === m.id
+  );
+
+  // Si ya tiene variantes, NO hacemos nada.
+  if (tieneVariantes) continue;
+
+  // Si la marca no tiene características,
+  // no tenemos nombre para crear la variante.
+  if (!(m.caracteristicas || "").trim()) continue;
+
+  console.log(
+    "Creando variante antigua para:",
+    m.marca,
+    m.caracteristicas
+  );
+
+  const { data: nuevaVariante, error: errorVariante } =
+    await supabase
+      .from("inventario_variantes")
+      .insert({
+        inventario_id: m.inventario_id,
+        marca_id: m.id,
+        user_id: m.user_id,
+        nombre: m.caracteristicas,
+        stock: Number(m.stock || 0),
+        minimo: Number(m.minimo || 0),
+        precioCompra: Number(m.precioCompra || 0),
+        precioVenta: Number(m.precioVenta || 0),
+        tipoVenta: m.tipoVenta || "Unidad"
+      })
+      .select()
+      .single();
+
+  if (errorVariante) {
+    console.error(
+      "Error creando variante para",
+      m.marca,
+      errorVariante
+    );
+    continue;
+  }
+
+  variantes.push(nuevaVariante);
+
+  console.log(
+    "Variante creada correctamente:",
+    nuevaVariante
+  );
+}
+
+
+// =====================================================
+// ARMAR INVENTARIO COMPLETO
+// =====================================================
+
 console.log("Inventario:", data);
 console.log("Inventario_marcas:", marcas);
+console.log("Inventario_variantes:", variantes);
+
 const inventarioCompleto = (data || []).map(p => ({
   ...p,
-  marcas: marcas.filter(m => m.inventario_id === p.id)
+
+  marcas: marcas
+    .filter(m => m.inventario_id === p.id)
+    .map(m => ({
+      ...m,
+
+      variantes: variantes.filter(
+        v => v.marca_id === m.id
+      )
+    }))
 }));
 
-console.log(inventarioCompleto);
+console.log("Inventario completo:", inventarioCompleto);
 
 setInventario(inventarioCompleto);
+console.log("Inventario_marcas:", marcas);
+console.log("Inventario_variantes:", variantes);
+
 };
 const cargarPagos = async () => {
   const { data, error } = await supabase
@@ -2459,6 +3671,7 @@ const cerrarSesion = async () => {
   setData={setPedidos}
   session={session}
   cargarInventario={cargarInventario}
+  inventario={inventario}
 />
 )}
 {tab === "avisos" && (
