@@ -2469,6 +2469,7 @@ function VentasDiarias({session, inventario, setInventario}) {
 const [producto, setProducto] = useState("");
 const [productoSeleccionado, setProductoSeleccionado] = useState(null);
 const [marcaSeleccionada, setMarcaSeleccionada] = useState("");
+const [varianteSeleccionada, setVarianteSeleccionada] = useState("");
 const [cantidad, setCantidad] = useState(1);
 const [ventaEditando, setVentaEditando] = useState(null);
 const [vista, setVista] = useState("hoy");
@@ -2662,13 +2663,19 @@ onChange={async (e) => {
     );
 
     setProductoSeleccionado(prod);
-setProducto(prod?.nombre || "");
+    setProducto(prod?.nombre || "");
+    setMarcaSeleccionada("");
+    setVarianteSeleccionada("");
 
-if (prod?.marcas.length === 1) {
-  setMarcaSeleccionada(prod.marcas[0].marca);
-} else {
-  setMarcaSeleccionada("");
-}
+    if (prod?.marcas?.length === 1) {
+      setMarcaSeleccionada(prod.marcas[0].marca);
+
+      if (prod.marcas[0].variantes?.length === 1) {
+        setVarianteSeleccionada(
+          prod.marcas[0].variantes[0].id
+        );
+      }
+    }
   }}
 >
   <option value="">Seleccione un producto</option>
@@ -2679,22 +2686,65 @@ if (prod?.marcas.length === 1) {
     </option>
   ))}
 </select>
-{productoSeleccionado &&
-  productoSeleccionado.marcas.length > 1 && (
-    <select
-      style={{ ...inputStyle, marginTop: 8 }}
-      value={marcaSeleccionada}
-      onChange={(e) => setMarcaSeleccionada(e.target.value)}
-    >
-      <option value="">Seleccione una marca</option>
 
-      {productoSeleccionado.marcas.map((m, i) => (
-        <option key={i} value={m.marca}>
-          {m.marca}
-        </option>
-      ))}
-    </select>
+{productoSeleccionado?.marcas?.length > 1 && (
+  <select
+    style={{ ...inputStyle, marginTop: 8 }}
+    value={marcaSeleccionada}
+    onChange={(e) => {
+      setMarcaSeleccionada(e.target.value);
+      setVarianteSeleccionada("");
+
+      const marca = productoSeleccionado.marcas.find(
+        m => m.marca === e.target.value
+      );
+
+      if (marca?.variantes?.length === 1) {
+        setVarianteSeleccionada(
+          marca.variantes[0].id
+        );
+      }
+    }}
+  >
+    <option value="">Seleccione una marca</option>
+
+    {productoSeleccionado.marcas.map((m) => (
+      <option key={m.id} value={m.marca}>
+        {m.marca}
+      </option>
+    ))}
+  </select>
 )}
+
+{productoSeleccionado &&
+  marcaSeleccionada &&
+  (() => {
+    const marca = productoSeleccionado.marcas?.find(
+      m => m.marca === marcaSeleccionada
+    );
+
+    const variantes = marca?.variantes || [];
+
+    return variantes.length > 0 ? (
+      <select
+        style={{ ...inputStyle, marginTop: 8 }}
+        value={varianteSeleccionada}
+        onChange={(e) =>
+          setVarianteSeleccionada(e.target.value)
+        }
+      >
+        <option value="">
+          Seleccione una variante
+        </option>
+
+        {variantes.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.nombre || "Sin descripción"} — Stock: {v.stock ?? 0}
+          </option>
+        ))}
+      </select>
+    ) : null;
+  })()}
 <input
   style={{ ...inputStyle, marginTop: 8 }}
   type="number"
@@ -2703,107 +2753,302 @@ if (prod?.marcas.length === 1) {
   onChange={e => setCantidad(Number(e.target.value))}
 />
       <button
-onClick={async () => {
-if (!producto.trim()) return;
-const productoInv = inventario.find(
-  p => p.nombre === producto
-);
+  onClick={async () => {
+    if (!producto.trim()) return;
 
-if (!productoInv) {
-  alert("Producto no encontrado.");
-  return;
-}
-
-let costoUnitario;
-let precioUnitario;
-
-if (productoInv.tieneMarcas) {
-
-  let marca;
-
-  if (productoInv.marcas.length === 1) {
-    marca = productoInv.marcas[0];
-  } else {
-    marca = productoInv.marcas.find(
-      m => m.marca === marcaSeleccionada
+    const productoInv = inventario.find(
+      p =>
+        p.nombre.trim().toLowerCase() ===
+        producto.trim().toLowerCase()
     );
 
-    if (!marca) {
-      alert("Seleccione una marca.");
+    if (!productoInv) {
+      alert("Producto no encontrado.");
       return;
     }
-  }
 
-  costoUnitario = marca.precioCompra;
-  precioUnitario = marca.precioVenta;
+    let costoUnitario = 0;
+    let precioUnitario = 0;
+    let marcaSeleccionadaObj = null;
+    let varianteObj = null;
 
-} else {
+    // =====================================================
+    // PRODUCTO CON MARCAS
+    // =====================================================
+    if (productoInv.tieneMarcas) {
+      const marcasProducto = productoInv.marcas || [];
 
-  costoUnitario = productoInv.precioCompra;
-  precioUnitario = productoInv.precioVenta;
+      if (marcasProducto.length === 0) {
+        alert("Este producto no tiene marcas.");
+        return;
+      }
 
-}
-const total = precioUnitario * cantidad;
-const { data, error } = await supabase
-  .from("ventas_diarias")
-  .insert([
-    {
-      user_id: session.user.id,
-      fecha: hoy,
-      producto,
-      marca: productoInv.tieneMarcas ? marcaSeleccionada : null,
-      cantidad,
-      costo_unitario: costoUnitario,
-      precio_unitario: precioUnitario,
-      total: total
+      if (marcasProducto.length === 1) {
+        marcaSeleccionadaObj = marcasProducto[0];
+      } else {
+        marcaSeleccionadaObj = marcasProducto.find(
+          m => m.marca === marcaSeleccionada
+        );
+
+        if (!marcaSeleccionadaObj) {
+          alert("Seleccione una marca.");
+          return;
+        }
+      }
+
+      // ===================================================
+      // BUSCAR VARIANTE
+      // ===================================================
+      const variantes = marcaSeleccionadaObj.variantes || [];
+
+      if (variantes.length > 0) {
+        varianteObj = variantes.find(
+          v => String(v.id) === String(varianteSeleccionada)
+        );
+
+        if (!varianteObj) {
+          alert("Seleccione una variante.");
+          return;
+        }
+
+        // Comprobar stock de la variante
+        if (Number(varianteObj.stock || 0) < Number(cantidad)) {
+          alert(
+            `Stock insuficiente. Hay '${varianteObj.stock || 0} unidades disponibles.'`
+          );
+          return;
+        }
+
+        costoUnitario = Number(varianteObj.precioCompra || 0);
+        precioUnitario = Number(varianteObj.precioVenta || 0);
+      } else {
+        // Producto con marca pero sin variantes
+        if (
+          Number(marcaSeleccionadaObj.stock || 0) <
+          Number(cantidad)
+        ) {
+          alert(
+            `Stock insuficiente. Hay '${marcaSeleccionadaObj.stock || 0} unidades disponibles.'`
+          );
+          return;
+        }
+
+        costoUnitario = Number(
+          marcaSeleccionadaObj.precioCompra || 0
+        );
+
+        precioUnitario = Number(
+          marcaSeleccionadaObj.precioVenta || 0
+        );
+      }
+    } else {
+      // =====================================================
+      // PRODUCTO SIN MARCA
+      // =====================================================
+      if (
+        Number(productoInv.stock || 0) <
+        Number(cantidad)
+      ) {
+        alert(
+          `Stock insuficiente. Hay '${productoInv.stock || 0} unidades disponibles.'`
+        );
+        return;
+      }
+
+      costoUnitario = Number(productoInv.precioCompra || 0);
+      precioUnitario = Number(productoInv.precioVenta || 0);
     }
-  ])
-  .select()
-  .single();
 
-if (error) {
-  console.error(error);
-  alert(error.message);
-  return;
-}
-    setVentas(v => [...v, data]);
-await actualizarInventario(
-  producto,
-  productoInv.tieneMarcas ? marcaSeleccionada : null,
-  cantidad
-);
+    // =====================================================
+    // TOTAL DE LA VENTA
+    // =====================================================
+    const total =
+      precioUnitario * Number(cantidad);
+
+    // =====================================================
+    // GUARDAR VENTA
+    // =====================================================
+    const { data, error } = await supabase
+      .from("ventas_diarias")
+      .insert([
+        {
+          user_id: session.user.id,
+          fecha: hoy,
+          producto: productoInv.nombre,
+          marca: productoInv.tieneMarcas
+            ? marcaSeleccionadaObj?.marca || null
+            : null,
+          variante: varianteObj?.nombre || null,
+          cantidad: Number(cantidad),
+          costo_unitario: costoUnitario,
+          precio_unitario: precioUnitario,
+          total: total
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error guardando venta:", error);
+      alert(error.message);
+      return;
+    }
+    // =====================================================
+    // ACTUALIZAR INVENTARIO EN SUPABASE
+    // =====================================================
+
+    if (productoInv.tieneMarcas && marcaSeleccionadaObj) {
+      // -----------------------------------------------
+      // 1. Actualizar variante
+      // -----------------------------------------------
+      if (varianteObj) {
+        const nuevoStockVariante =
+          Number(varianteObj.stock || 0) -
+          Number(cantidad);
+
+        const { error: errorVariante } = await supabase
+          .from("inventario_variantes")
+          .update({
+            stock: nuevoStockVariante
+          })
+          .eq("id", varianteObj.id)
+          .eq("user_id", session.user.id);
+
+        if (errorVariante) {
+          console.error(
+            "Error actualizando variante:",
+            errorVariante
+          );
+          alert(errorVariante.message);
+
+          // La venta ya fue creada; no seguimos actualizando
+          // la pantalla como si todo hubiera resultado bien.
+          return;
+        }
+      }
+
+      // -----------------------------------------------
+      // 2. Actualizar stock de la marca
+      // -----------------------------------------------
+      const nuevoStockMarca =
+        Number(marcaSeleccionadaObj.stock || 0) -
+        Number(cantidad);
+
+            const { error: errorMarca } = await supabase
+  .from("inventario_marcas")
+  .update({
+    stock: nuevoStockMarca
+  })
+
+        .eq("id", marcaSeleccionadaObj.id)
+        .eq("user_id", session.user.id);
+
+      if (errorMarca) {
+        console.error(
+          "Error actualizando marca:",
+          errorMarca
+        );
+        alert(errorMarca.message);
+        return;
+      }
+    } else {
+      // -----------------------------------------------
+      // Producto sin marca
+      // -----------------------------------------------
+      const nuevoStock =
+        Number(productoInv.stock || 0) -
+        Number(cantidad);
+
+      const nuevosVendidos =
+        Number(productoInv.vendidos || 0) +
+        Number(cantidad);
+
+      const { error: errorProducto } = await supabase
+        .from("inventario")
+        .update({
+          stock: nuevoStock,
+          vendidos: nuevosVendidos
+        })
+        .eq("id", productoInv.id)
+        .eq("user_id", session.user.id);
+
+      if (errorProducto) {
+        console.error(
+          "Error actualizando producto:",
+          errorProducto
+        );
+        alert(errorProducto.message);
+        return;
+      }
+    }
+
+    // =====================================================
+    // ACTUALIZAR INVENTARIO EN PANTALLA
+    // =====================================================
+
     const nuevoInventario = inventario.map(p => {
+      if (p.id !== productoInv.id) return p;
 
-  if (p.nombre !== producto) return p;
-
-  if (p.tieneMarcas) {
-
-    return {
-      ...p,
-      marcas: marcas.map(m =>
-        m.marca === marcaSeleccionada
-          ? {
-              ...m,
-              stock: m.stock - cantidad,
-              vendidos: (m.vendidos || 0) + cantidad
+      if (p.tieneMarcas && marcaSeleccionadaObj) {
+        return {
+          ...p,
+          marcas: (p.marcas || []).map(m => {
+            if (m.id !== marcaSeleccionadaObj.id) {
+              return m;
             }
-          : m
-      )
-    };
 
-  }
+            return {
+  ...m,
+  stock:
+    Number(m.stock || 0) -
+    Number(cantidad),
 
-  return {
-    ...p,
-    stock: (p.stock || 0) - cantidad,
-    vendidos: (p.vendidos || 0) + cantidad
-  };
+  variantes: (m.variantes || []).map(v => {
+    if (
+      varianteObj &&
+      v.id === varianteObj.id
+    ) {
+      return {
+        ...v,
+        stock:
+          Number(v.stock || 0) -
+          Number(cantidad)
+      };
+    }
 
-});
+    
+                return v;
+  })
+};
+          })
+        };
+      }
 
-setInventario(nuevoInventario);
+      return {
+        ...p,
+        stock:
+          Number(p.stock || 0) -
+          Number(cantidad),
+
+        vendidos:
+          Number(p.vendidos || 0) +
+          Number(cantidad)
+      };
+    });
+    setInventario(nuevoInventario);
+
+    // =====================================================
+    // LIMPIAR FORMULARIO
+    // =====================================================
+
     setProducto("");
+    setProductoSeleccionado(null);
+    setMarcaSeleccionada("");
+    setVarianteSeleccionada("");
     setCantidad(1);
+
+    // Agregar la venta a la lista
+    setVentas(v => [data, ...v]);
   }}
   style={{
     width: "100%",
@@ -2816,8 +3061,8 @@ setInventario(nuevoInventario);
   }}
 >
   + Agregar venta
-  
 </button>
+
 {ventas.map((v, i) => (
   <div
     key={i}
@@ -2847,14 +3092,25 @@ setInventario(nuevoInventario);
       🛒 {v.producto}
     </div>
 
-    <div
-      style={{
-        color: "#666",
-        marginTop: 4
-      }}
-    >
-      🏷️ {v.marca || "Sin marca"}
-    </div>
+   <div
+  style={{
+    color: "#666",
+    marginTop: 4
+  }}
+>
+  🏷 {v.marca || "Sin marca"}
+</div>
+
+{v.variante && (
+  <div
+    style={{
+      color: "#666",
+      marginTop: 4
+    }}
+  >
+    🔹 {v.variante}
+  </div>
+)}
 
     <div
       style={{
@@ -2890,7 +3146,11 @@ setInventario(nuevoInventario);
             color: "#888"
           }}
         >
-          Ganancia: {formatPesos(v.ganancia || 0)}
+          Ganancia: {formatPesos(
+  (Number(v.precio_unitario || 0) -
+   Number(v.costo_unitario || 0)) *
+  Number(v.cantidad || 0)
+)}
         </div>
       </div>
 <button
@@ -2912,64 +3172,163 @@ style={{
 </button>
       <button
   onClick={async () => {
-
     if (!window.confirm("¿Eliminar esta venta?")) return;
-    const productoInv = inventario.find(
-  p => p.nombre === v.producto
-);
 
-if (productoInv) {
+    try {
+      // Buscar el producto
+      const productoInv = inventario.find(
+        p =>
+          p.nombre.trim().toLowerCase() ===
+          v.producto.trim().toLowerCase()
+      );
 
-  const marcas = [...productoInv.marcas];
+      if (!productoInv) {
+        alert("No se encontró el producto en el inventario.");
+        return;
+      }
 
-  const indice = marcas.findIndex(
-    m => m.marca === v.marca
-  );
+      // =====================================================
+      // PRODUCTO CON MARCA
+      // =====================================================
+      if (v.marca) {
+        const marcaObj = (productoInv.marcas || []).find(
+          m =>
+            m.marca.trim().toLowerCase() ===
+            v.marca.trim().toLowerCase()
+        );
 
-  if (indice !== -1) {
+        if (!marcaObj) {
+          alert("No se encontró la marca de esta venta.");
+          return;
+        }
 
-    marcas[indice] = {
-      ...marcas[indice],
-      stock: marcas[indice].stock + v.cantidad,
-      vendidos: Math.max(
-        0,
-        (marcas[indice].vendidos || 0) - v.cantidad
-      )
-    };
+        // -------------------------------------------------
+        // Si la venta corresponde a una VARIANTE
+        // -------------------------------------------------
+        if (v.variante) {
+          const varianteObj = (marcaObj.variantes || []).find(
+            variante =>
+              variante.nombre?.trim().toLowerCase() ===
+              v.variante.trim().toLowerCase()
+          );
 
-    await supabase
-  .from("inventario")
-  .update({ marcas })
-  .eq("id", productoInv.id)
-  .eq("user_id", session.user.id);
+          if (!varianteObj) {
+            alert("No se encontró la variante de esta venta.");
+            return;
+          }
 
-    setInventario(inv =>
-      inv.map(p =>
-        p.id === productoInv.id
-          ? { ...p, marcas }
-          : p
-      )
-    );
+          // Devolver cantidad a la variante
+          const nuevoStockVariante =
+            Number(varianteObj.stock || 0) + Number(v.cantidad);
 
-  }
+          const { error: errorVariante } = await supabase
+            .from("inventario_variantes")
+            .update({
+              stock: nuevoStockVariante
+            })
+            .eq("id", varianteObj.id)
+            .eq("user_id", session.user.id);
 
-}
+          if (errorVariante) {
+            console.error(errorVariante);
+            alert(errorVariante.message);
+            return;
+          }
 
-    const { error } = await supabase
-      .from("ventas_diarias")
-      .delete()
-      .eq("id", v.id)
-      .eq("user_id", session.user.id);
+          // Devolver cantidad al total de la marca
+          const nuevoStockMarca =
+            Number(marcaObj.stock || 0) + Number(v.cantidad);
 
-    if (error) {
-      alert(error.message);
-      return;
+          const { error: errorMarca } = await supabase
+            .from("inventario_marcas")
+            .update({
+              stock: nuevoStockMarca
+            })
+            .eq("id", marcaObj.id)
+            .eq("user_id", session.user.id);
+
+          if (errorMarca) {
+            console.error(errorMarca);
+            alert(errorMarca.message);
+            return;
+          }
+        }
+
+        // -------------------------------------------------
+        // Marca SIN variante
+        // -------------------------------------------------
+        else {
+          const nuevoStockMarca =
+            Number(marcaObj.stock || 0) + Number(v.cantidad);
+
+          const { error: errorMarca } = await supabase
+            .from("inventario_marcas")
+            .update({
+              stock: nuevoStockMarca
+            })
+            .eq("id", marcaObj.id)
+            .eq("user_id", session.user.id);
+
+          if (errorMarca) {
+            console.error(errorMarca);
+            alert(errorMarca.message);
+            return;
+          }
+        }
+      }
+
+      // =====================================================
+      // PRODUCTO SIN MARCA
+      // =====================================================
+      else {
+        const nuevoStock =
+          Number(productoInv.stock || 0) + Number(v.cantidad);
+
+        const { error: errorProducto } = await supabase
+          .from("inventario")
+          .update({
+            stock: nuevoStock
+          })
+          .eq("id", productoInv.id)
+          .eq("user_id", session.user.id);
+
+        if (errorProducto) {
+          console.error(errorProducto);
+          alert(errorProducto.message);
+          return;
+        }
+      }
+
+      // =====================================================
+      // ELIMINAR LA VENTA
+      // =====================================================
+      const { error } = await supabase
+        .from("ventas_diarias")
+        .delete()
+        .eq("id", v.id)
+        .eq("user_id", session.user.id);
+
+      if (error) {
+        console.error(error);
+        alert(error.message);
+        return;
+      }
+
+      // Actualizar pantalla
+      setVentas(ventas =>
+        ventas.filter(x => x.id !== v.id)
+      );
+
+      // Recargar inventario para que refleje los stocks devueltos
+      // si tu componente ya tiene esta función disponible.
+      if (typeof cargarInventario === "function") {
+        await cargarInventario();
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Error al eliminar la venta.");
     }
-
-    setVentas(ventas =>
-      ventas.filter(x => x.id !== v.id)
-    );
-
   }}
   style={{
     border: "none",
@@ -2979,7 +3338,7 @@ if (productoInv) {
     cursor: "pointer"
   }}
 >
-  🗑️
+  🗑
 </button>
     </div>
   </div>
@@ -2990,40 +3349,290 @@ if (productoInv) {
     inventario={inventario}
     onCerrar={() => setVentaEditando(null)}
     onGuardar={async (ventaActualizada) => {
+  try {
+    const cantidadAnterior = Number(ventaEditando.cantidad || 0);
+    const cantidadNueva = Number(ventaActualizada.cantidad || 0);
 
-      const { error } = await supabase
-        .from("ventas_diarias")
-.update({
-  cantidad: ventaActualizada.cantidad,
-  total:
-    ventaActualizada.cantidad *
-    ventaActualizada.precio_unitario
-})
-.eq("id", ventaActualizada.id)
-.eq("user_id", session.user.id);
+    if (cantidadNueva <= 0) {
+      alert("La cantidad debe ser mayor que 0.");
+      return;
+    }
 
-      if (error) {
-        alert(error.message);
+    // Diferencia:
+    // 4 → 3 = -1  (devuelve 1 al stock)
+    // 3 → 5 = +2  (descuenta 2 del stock)
+    const diferencia = cantidadNueva - cantidadAnterior;
+
+    // Buscar producto
+    const productoInv = inventario.find(
+      p =>
+        p.nombre.trim().toLowerCase() ===
+        ventaEditando.producto.trim().toLowerCase()
+    );
+
+    if (!productoInv) {
+      alert("No se encontró el producto en el inventario.");
+      return;
+    }
+
+    // =====================================================
+    // PRODUCTO CON MARCA
+    // =====================================================
+
+    let marcaObj = null;
+    let varianteObj = null;
+
+    if (productoInv.tieneMarcas) {
+
+      marcaObj = (productoInv.marcas || []).find(
+        m => m.marca === ventaEditando.marca
+      );
+
+      if (!marcaObj) {
+        alert("No se encontró la marca.");
         return;
       }
 
-      setVentas(ventas =>
-        ventas.map(v =>
-          v.id === ventaActualizada.id
-            ? {
-                ...v,
-                cantidad: ventaActualizada.cantidad,
-                total:
-                  ventaActualizada.cantidad *
-                  ventaActualizada.precio_unitario
-              }
-            : v
-        )
+      // Buscar variante de la venta
+      if (ventaEditando.variante) {
+        varianteObj = (marcaObj.variantes || []).find(
+          v => v.nombre === ventaEditando.variante
+        );
+
+        if (!varianteObj) {
+          alert("No se encontró la variante.");
+          return;
+        }
+      }
+
+      // ===================================================
+      // COMPROBAR STOCK
+      // ===================================================
+
+      if (diferencia > 0) {
+
+        if (varianteObj) {
+          const stockDisponible = Number(varianteObj.stock || 0);
+
+          if (stockDisponible < diferencia) {
+            alert(
+              `Stock insuficiente. Solo hay ${stockDisponible} unidades disponibles.`
+            );
+            return;
+          }
+        } else {
+          const stockDisponible = Number(marcaObj.stock || 0);
+
+          if (stockDisponible < diferencia) {
+            alert(
+              `Stock insuficiente. Solo hay ${stockDisponible} unidades disponibles.`
+            );
+            return;
+          }
+        }
+      }
+
+      // ===================================================
+      // ACTUALIZAR VARIANTE
+      // ===================================================
+
+      if (varianteObj) {
+
+        const nuevoStockVariante =
+          Number(varianteObj.stock || 0) - diferencia;
+
+        const { error: errorVariante } = await supabase
+          .from("inventario_variantes")
+          .update({
+            stock: nuevoStockVariante
+          })
+          .eq("id", varianteObj.id)
+          .eq("user_id", session.user.id);
+
+        if (errorVariante) {
+          console.error(
+            "Error actualizando variante:",
+            errorVariante
+          );
+          alert(errorVariante.message);
+          return;
+        }
+      }
+
+      // ===================================================
+      // ACTUALIZAR STOCK TOTAL DE LA MARCA
+      // ===================================================
+
+      const nuevoStockMarca =
+        Number(marcaObj.stock || 0) - diferencia;
+
+      const { error: errorMarca } = await supabase
+        .from("inventario_marcas")
+        .update({
+          stock: nuevoStockMarca
+        })
+        .eq("id", marcaObj.id)
+        .eq("user_id", session.user.id);
+
+      if (errorMarca) {
+        console.error(
+          "Error actualizando marca:",
+          errorMarca
+        );
+        alert(errorMarca.message);
+        return;
+      }
+
+    } else {
+
+      // =====================================================
+      // PRODUCTO SIN MARCA
+      // =====================================================
+
+      if (diferencia > 0) {
+        const stockDisponible =
+          Number(productoInv.stock || 0);
+
+        if (stockDisponible < diferencia) {
+          alert(
+            `Stock insuficiente. Solo hay ${stockDisponible} unidades disponibles.`
+          );
+          return;
+        }
+      }
+      const nuevoStock =
+        Number(productoInv.stock || 0) - diferencia;
+
+      const { error: errorProducto } = await supabase
+        .from("inventario")
+        .update({
+          stock: nuevoStock
+        })
+        .eq("id", productoInv.id)
+        .eq("user_id", session.user.id);
+
+      if (errorProducto) {
+        console.error(
+          "Error actualizando producto:",
+          errorProducto
+        );
+        alert(errorProducto.message);
+        return;
+      }
+    }
+
+    // =====================================================
+    // ACTUALIZAR VENTA
+    // =====================================================
+
+    const nuevoTotal =
+      cantidadNueva *
+      Number(ventaActualizada.precio_unitario || 0);
+
+    const { error: errorVenta } = await supabase
+      .from("ventas_diarias")
+      .update({
+        cantidad: cantidadNueva,
+        total: nuevoTotal
+      })
+      .eq("id", ventaActualizada.id)
+      .eq("user_id", session.user.id);
+
+    if (errorVenta) {
+      console.error(
+        "Error actualizando venta:",
+        errorVenta
       );
+      alert(errorVenta.message);
+      return;
+    }
 
-      setVentaEditando(null);
+    // =====================================================
+    // ACTUALIZAR INVENTARIO EN PANTALLA
+    // =====================================================
 
-    }}
+    const nuevoInventario = inventario.map(p => {
+
+      if (p.id !== productoInv.id) {
+        return p;
+      }
+
+      if (p.tieneMarcas && marcaObj) {
+
+        return {
+          ...p,
+
+          marcas: (p.marcas || []).map(m => {
+
+            if (m.id !== marcaObj.id) {
+              return m;
+            }
+
+            return {
+              ...m,
+
+              stock:
+                Number(m.stock || 0) - diferencia,
+
+              variantes: (m.variantes || []).map(v => {
+
+                if (
+                  varianteObj &&
+                  v.id === varianteObj.id
+                ) {
+                  return {
+                    ...v,
+                    stock:
+                      Number(v.stock || 0) - diferencia
+                  };
+                }
+
+                return v;
+              })
+            };
+          })
+        };
+      }
+
+      return {
+        ...p,
+        stock:
+          Number(p.stock || 0) - diferencia
+      };
+    });
+
+    setInventario(nuevoInventario);
+
+    // =====================================================
+    // ACTUALIZAR VENTA EN PANTALLA
+    // =====================================================
+
+    setVentas(ventas =>
+      ventas.map(v =>
+        v.id === ventaActualizada.id
+          ? {
+              ...v,
+              cantidad: cantidadNueva,
+              total: nuevoTotal
+            }
+          : v
+      )
+    );
+
+    setVentaEditando(null);
+
+  } catch (err) {
+
+    console.error(
+      "Error editando venta:",
+      err
+    );
+
+    alert(
+      "Ocurrió un error al editar la venta."
+    );
+  }
+}}
   />
 )}
 </div>
